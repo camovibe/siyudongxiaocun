@@ -1,0 +1,2124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>兆丰渠道周转 · 全维看板</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;}</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react"
+  }
+}
+</script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+(function(){
+  function compileFallback() {
+    if (typeof Babel === 'undefined' || typeof React !== 'undefined') return;
+    var scripts = document.querySelectorAll('script[type="text/babel"]');
+    scripts.forEach(function(s) {
+      try {
+        var result = Babel.transform(s.textContent, { presets: ['react'], sourceType: 'module' });
+        var ns = document.createElement('script');
+        ns.type = 'module';
+        ns.textContent = result.code;
+        document.body.appendChild(ns);
+      } catch(e) { console.error('Babel fallback compile error:', e); }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(compileFallback, 500); });
+  } else {
+    setTimeout(compileFallback, 500);
+  }
+})();
+</script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="root"></div>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  LineChart, Line, ComposedChart, Bar, Area, AreaChart, LabelList,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
+import {
+  Boxes, TrendingUp, TrendingDown, Activity, Gauge, Tag,
+  Lock, Unlock, ShieldAlert, CircleDollarSign, BarChart3,
+  Store, PackageSearch, Info, EyeOff,
+  Upload, Download, FileSpreadsheet, CheckCircle2, AlertCircle, AlertTriangle, X, Settings,
+} from 'lucide-react';
+
+/* ================= 确定性随机 ================= */
+function mulberry32(a){return function(){a|=0;a=(a+0x6d2b79f5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};}
+/* ================= 维度 ================= */
+const CATS = [
+  { key: '营养包', color: '#ec4899' },
+  { key: '心脑血管健康', color: '#06b6d4' },
+  { key: '骨骼健康', color: '#6366f1' },
+  { key: '植提', color: '#10b981' },
+  { key: '基础维矿', color: '#f59e0b' },
+  { key: '孕婴童营养', color: '#e8793a' }
+];
+const CAT_COLOR = Object.fromEntries(CATS.map(c => [c.key, c.color]));
+
+const CHANNELS = ['美团医药','爱库存','鲸灵','洋葱omall','中石化易捷','海拍客','拼多多','大参林','永辉商城','快团团','万物心选','优时通'];
+const CH_COLOR = ['#6366f1','#ec4899','#06b6d4','#10b981','#f59e0b','#8b5cf6','#ef4444','#14b8a6','#f97316','#3b82f6','#a855f7','#84cc16'];
+
+const PERIODS = ['3/24','3/30','4/6','4/13','4/20','4/27','5/4','5/11','5/18','5/25','6/1','6/8','6/15'].map((label,idx)=>({label,idx}));
+
+/* 全局 Gist ID：部署后把团队共享的 Gist ID 填在这里，访客打开即自动拉取数据 */
+const DEFAULT_GIST_ID = 'b33a02fb9982b4dfc3203e7118e912db';
+
+function expandPeriods(newLabels) {
+  const existing = new Set(PERIODS.map(p => p.label));
+  const existingNormalized = new Set();
+  PERIODS.forEach(p => { existingNormalized.add(normalizePeriodLabel(p.label)); });
+  let added = false;
+  newLabels.forEach(label => {
+    const clean = String(label).trim();
+    if (!clean) return;
+    if (existing.has(clean)) return;
+    const normalized = normalizePeriodLabel(clean);
+    if (!existingNormalized.has(normalized)) {
+      PERIODS.push({label: normalized, idx: PERIODS.length});
+      existing.add(clean);
+      existingNormalized.add(normalized);
+      added = true;
+    }
+  });
+  return added;
+}
+
+function normalizePeriodLabel(label) {
+  if (!label) return '';
+  const clean = String(label).trim();
+  const m1 = clean.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m1) return String(parseInt(m1[2],10)) + '/' + String(parseInt(m1[3],10));
+  const m2 = clean.match(/^(\d{1,2})[\/\-](\d{1,2})$/);
+  if (m2) return String(parseInt(m2[1],10)) + '/' + String(parseInt(m2[2],10));
+  const m3 = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m3) return String(parseInt(m3[1],10)) + '/' + String(parseInt(m3[2],10));
+  const m4 = clean.match(/(\d{1,2})月(\d{1,2})日?/);
+  if (m4) return parseInt(m4[1],10) + '/' + parseInt(m4[2],10);
+  return clean;
+}
+
+/* 优化：统一的周期匹配函数，替代原 applySkuUpload / applyChannelUpload 内部
+   两份重复且含死代码(m3/m5 相同正则)的 findPeriodIdx */
+function findPeriodIdx(label) {
+  if (!label) return -1;
+  if (!Array.isArray(PERIODS)) return -1;
+  const target = normalizePeriodLabel(label);
+  const clean = String(label).trim();
+  let idx = PERIODS.findIndex(p => p.label === clean);
+  if (idx >= 0) return idx;
+  idx = PERIODS.findIndex(p => p.label === target);
+  if (idx >= 0) return idx;
+  // fallback: 提取两段数字
+  const nums = clean.match(/(\d{1,2})\D+(\d{1,2})/);
+  if (nums) {
+    idx = PERIODS.findIndex(p => p.label === parseInt(nums[1],10) + '/' + parseInt(nums[2],10));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+const SKUS = [
+  { code:'493948', name:'女性40+每日营养包', cat:'营养包', price:196, demand:560, profile:'hot' },
+  { code:'493947', name:'女性30+每日营养包', cat:'营养包', price:138, demand:420, profile:'healthy' },
+  { code:'493949', name:'女性50+每日营养包', cat:'营养包', price:250, demand:300, profile:'slow' },
+  { code:'493945', name:'男性40+每日营养包', cat:'营养包', price:180, demand:480, profile:'hot' },
+  { code:'493946', name:'男性50+每日营养包', cat:'营养包', price:205, demand:300, profile:'healthy' },
+  { code:'490028', name:'女性20+每日营养包', cat:'营养包', price:145, demand:165,  profile:'healthy' },
+  { code:'490006', name:'97%高纯度鱼油软胶囊', cat:'心脑血管健康', price:130, demand:520, profile:'hot' },
+  { code:'490003', name:'七合一加钙氨糖软骨素片', cat:'骨骼健康', price:130, demand:380, profile:'healthy' },
+  { code:'490026', name:'优骨力关节养护片', cat:'骨骼健康', price:110, demand:240, profile:'slow' },
+  { code:'490009', name:'姜黄奶蓟精华 120粒', cat:'植提', price:135, demand:300, profile:'healthy' },
+  { code:'490022', name:'男士多维矿物质缓释片', cat:'基础维矿', price:200, demand:180, profile:'slow' },
+  { code:'490023', name:'女士多维矿物质片', cat:'基础维矿', price:150, demand:240, profile:'healthy' },
+];
+const PROFILE = {
+  hot:{trend:0.022,cover:1.3,reorder:1.0},
+  healthy:{trend:0.0,cover:3.0,reorder:2.0},
+  slow:{trend:-0.012,cover:6.0,reorder:3.0},
+  dead:{trend:-0.03,cover:0,reorder:0},
+};
+
+/* ===== 生成周度进销存（含期初/入库/期末），并模拟价格波动 =====
+   优化：接受 seed 参数并在函数内创建局部 rng，保证每次调用可复现 */
+function genSkuWeeks(skus, seed=20260616){
+  const rng = mulberry32(seed);
+  const out = {};
+  for (const s of skus) {
+    const p = PROFILE[s.profile];
+    let stock = s.profile==='dead' ? Math.round(s.demand*50) : Math.round(s.demand*(p.cover+2));
+    let demand = s.demand;
+    const arr = [];
+    for (let i=0;i<PERIODS.length;i++){
+      const begin = stock;
+      demand = demand*(1+p.trend)*(0.85+rng()*0.3);
+      const promo = 0.82 + rng()*0.18;
+      const priceElastic = 1 + (1-promo)*1.4;
+      const effDemand = demand*priceElastic;
+      const sales = Math.max(0, Math.min(begin, Math.round(effDemand)));
+      let inbound = 0;
+      if (s.profile!=='dead' && begin - sales < s.demand*p.reorder){
+        inbound = Math.round(s.demand*p.cover);
+      }
+      const end = Math.max(0, begin - sales + inbound);
+      stock = end;
+      const unitPrice = +(s.price*promo).toFixed(2);
+      const gmv = Math.round(sales*unitPrice);
+      arr.push({ begin, inbound, end, sales, gmv, unitPrice });
+    }
+    out[s.code] = arr;
+  }
+  return out;
+}
+const INITIAL_SKU_WEEKS = genSkuWeeks(SKUS);
+
+/* ===== 单品衍生指标 ===== */
+function genSkuMetrics(skus, weeks){
+  const out = {};
+  for (const s of skus){
+    const series = weeks[s.code] || [];
+    out[s.code] = series.map((w,i)=>{
+      const totalSales = series.slice(0, i+1).reduce((sum, item) => sum + (item.sales || 0), 0);
+      let firstBegin = 0;
+      for (let j = 0; j <= i; j++) {
+        if ((series[j].begin || 0) > 0) {
+          firstBegin = series[j].begin;
+          break;
+        }
+      }
+      const ratio    = w.sales>0 ? +(w.end/w.sales).toFixed(2) : 99;
+      const ratioNet = w.sales>0 ? +(Math.max(0,(w.end-w.inbound))/(w.sales/7*30)).toFixed(2) : 99;
+      const turnover = (firstBegin + w.end) > 0 ? +(totalSales/((firstBegin + w.end)/2)).toFixed(2) : 0;
+      const dailyAvg = +(w.sales/7).toFixed(2);
+      const avgPrice = w.sales>0 ? +(w.gmv/w.sales).toFixed(2) : 0;
+      return { period:PERIODS[i].label, ...w, ratio, ratioNet, turnover, dailyAvg, avgPrice };
+    });
+  }
+  return out;
+}
+const INITIAL_SKU_METRICS = genSkuMetrics(SKUS, INITIAL_SKU_WEEKS);
+
+/* ===== 渠道周度数据（按品类权重分摊 SKU 周销） =====
+   优化：接受 seed 参数并在函数内创建局部 rng */
+function genChannelWeekly(skus, weeks, seed=987654321){
+  const rng = mulberry32(seed);
+  const CAT_CH_W = {};
+  for (const c of CATS){
+    const w = CHANNELS.map(()=>0.3+rng()*rng()*3);
+    const sum = w.reduce((a,b)=>a+b,0);
+    CAT_CH_W[c.key] = w.map(x=>x/sum);
+  }
+  return PERIODS.map(p=>{
+    const row = { label:p.label };
+    CHANNELS.forEach((ch,ci)=>{
+      let gmv=0, vol=0;
+      for (const s of skus){
+        const w = weeks[s.code][p.idx];
+        const wt = CAT_CH_W[s.cat][ci]*(0.85+rng()*0.3);
+        gmv += w.gmv*wt; vol += w.sales*wt;
+      }
+      row['g_'+ch]=Math.round(gmv); row['v_'+ch]=Math.round(vol);
+    });
+    return row;
+  });
+}
+const INITIAL_CHANNEL_WEEKLY = genChannelWeekly(SKUS, INITIAL_SKU_WEEKS);
+
+/* ===== 格式化 ===== */
+const fmtMoney = v => v>=10000 ? (v/10000).toFixed(2)+'万' : Math.round(v).toLocaleString();
+const fmtNum = v => Math.round(v).toLocaleString();
+const pct = v => (v>=0?'+':'')+v.toFixed(2)+'%';
+const ratioColor = r => r<0.8?'#f97316':r<=1.8?'#16a34a':r<=2.5?'#ca8a04':r<=4?'#ea580c':'#dc2626';
+
+const TABS = [
+  { id:'sku', label:'单品周转', icon:Activity, lock:false },
+  { id:'channel', label:'渠道分析', icon:Store, lock:false },
+  { id:'profit', label:'利润监控', icon:CircleDollarSign, lock:true },
+  { id:'price', label:'控价监控', icon:ShieldAlert, lock:true },
+];
+
+/* ================= 迷你图组件 =================
+   优化：改为内联 SVG polyline 自绘，替代 recharts ResponsiveContainer，
+   避免总表 48 个图表实例造成的性能问题 */
+function Sparkline({ data, dataKey, color, valueFormatter }) {
+  const latest = data && data.length > 0 ? data[data.length - 1] : null;
+  const latestValue = latest ? latest[dataKey] : null;
+  const points = useMemo(() => {
+    if (!data || data.length === 0) return '';
+    const vals = data.map(d => (typeof d[dataKey] === 'number' ? d[dataKey] : 0));
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const range = (max - min) || 1;
+    const W = 120, H = 30, pad = 3;
+    const n = vals.length;
+    return vals.map((v, i) => {
+      const x = pad + (n > 1 ? (i / (n - 1)) * (W - 2 * pad) : 0);
+      const y = H - pad - ((v - min) / range) * (H - 2 * pad);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }, [data, dataKey]);
+  return (
+    <div className="flex items-center gap-2">
+      <svg width={120} height={30} style={{ flexShrink: 0 }}>
+        {points
+          ? <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+          : null}
+      </svg>
+      <span className="text-xs tabular-nums text-slate-600 text-right" style={{ minWidth: '3rem' }}>
+        {latestValue !== null && latestValue !== undefined
+          ? (valueFormatter ? valueFormatter(latestValue) : latestValue.toFixed(2))
+          : '—'}
+      </span>
+    </div>
+  );
+}
+
+/* ================= SKU 总体汇总表 ================= */
+function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
+  const metrics = [
+    { key: 'ratioNet', label: '库销比（净）', color: '#6366f1', fmt: v => v >= 99 ? '∞' : v.toFixed(2) },
+    { key: 'turnover', label: '滚动周转率', color: '#0d9488', fmt: v => (v * 100).toFixed(2) + '%' },
+    { key: 'dailyAvg', label: '周均日销', color: '#6366f1', fmt: v => v.toFixed(2) },
+    { key: 'avgPrice', label: '倒算均价', color: '#ea580c', fmt: v => '¥' + v.toFixed(2) },
+  ];
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100">
+        <h3 className="font-semibold">SKU 总体汇总</h3>
+        <p className="text-xs text-slate-400 mt-0.5">点击行跳转到单品详情 · 右侧数值为最新一周 · 折线为最近 {PERIODS.length} 周趋势</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr className="text-slate-500">
+              <th className="px-3 py-2 text-left font-medium whitespace-nowrap">商品编码</th>
+              <th className="px-3 py-2 text-left font-medium whitespace-nowrap">名称</th>
+              <th className="px-3 py-2 text-left font-medium whitespace-nowrap">品类</th>
+              {metrics.map(m => (
+                <th key={m.key} className="px-3 py-2 text-left font-medium whitespace-nowrap">{m.label}趋势</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {skuMaster.map(s => {
+              const series = skuMetrics[s.code] || [];
+              const isEmpty = series.length === 0;
+              return (
+                <tr key={s.code} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => onSelectSku && onSelectSku(s.code)}>
+                  <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{s.code}</td>
+                  <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{s.name}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: CAT_COLOR[s.cat] + '1a', color: CAT_COLOR[s.cat] }}>{s.cat}</span>
+                  </td>
+                  {metrics.map(m => (
+                    <td key={m.key} className="px-3 py-2">
+                      {!isEmpty ? (
+                        <Sparkline data={series} dataKey={m.key} color={m.color} valueFormatter={m.fmt} />
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard(){
+  const isReadOnly = typeof window !== 'undefined' && window.location.protocol !== 'file:';
+
+  const [tab,setTab] = useState('sku');
+  const [skuMaster,setSkuMaster] = useState([...SKUS]);
+  const [skuCode,setSkuCode] = useState(SKUS[0].code);
+  const [unlocked,setUnlocked] = useState(false);
+  const [passcode,setPasscode] = useState('2026');
+  const [showPassSetting,setShowPassSetting] = useState(false);
+  const [showSkuManager,setShowSkuManager] = useState(false);
+  const [hasRealData,setHasRealData] = useState(false);
+  const importRef = useRef(null);
+
+  const [cost,setCost]   = useState(()=>Object.fromEntries(SKUS.map(s=>[s.code,Math.round(s.price*0.3)])));
+  const [supply,setSupply]=useState(()=>Object.fromEntries(SKUS.map(s=>[s.code,Math.round(s.price*0.55)])));
+  const [ctrl,setCtrl]   =useState(()=>Object.fromEntries(SKUS.map(s=>[s.code,Math.round(s.price*0.92)])));
+
+  const [skuWeeks,setSkuWeeks] = useState(INITIAL_SKU_WEEKS);
+  const [skuMetrics,setSkuMetrics] = useState(()=>genSkuMetrics(SKUS, INITIAL_SKU_WEEKS));
+  const [channelWeekly,setChannelWeekly] = useState(INITIAL_CHANNEL_WEEKLY);
+  const [showUploadSku,setShowUploadSku] = useState(false);
+  const [showUploadChannel,setShowUploadChannel] = useState(false);
+
+  const [showGistSync,setShowGistSync] = useState(false);
+
+  /* 按品类 + sortOrder/Code 排序，展示更规整 */
+  const sortedSkuMaster = useMemo(() => {
+    const catOrder = {
+      '营养包': 0,
+      '心脑血管健康': 1,
+      '骨骼健康': 2,
+      '植提': 3,
+      '基础维矿': 4,
+      '孕婴童营养': 5,
+    };
+    return [...skuMaster].sort((a, b) => {
+      const aOrder = catOrder[a.cat] ?? 99;
+      const bOrder = catOrder[b.cat] ?? 99;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return parseInt(b.code, 10) - parseInt(a.code, 10);
+    });
+  }, [skuMaster]);
+
+  /* 优化：移除 window._* 全局调试变量挂载 */
+
+  const exportData = () => {
+    const data = {skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl, PERIODS, version:'v2', exportedAt:Date.now()};
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob(['﻿'+json], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '兆丰渠道周转数据_'+new Date().toISOString().slice(0,10)+'.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /* 统一的 JSON 数据加载逻辑（供文件导入和自动拉取共用） */
+  const loadDataFromJson = (data) => {
+    if(!data.skuMaster || !data.skuWeeks || !data.skuMetrics){
+      alert('文件格式不正确，缺少必要字段');
+      return false;
+    }
+    // 验证数据周数
+    const firstSku = data.skuMaster[0];
+    const weekCount = firstSku ? (data.skuWeeks[firstSku.code] || []).length : 0;
+    // 优先使用导出的 PERIODS（v2），否则从 skuMetrics 收集周期（v1兼容）
+    if(data.PERIODS && data.PERIODS.length > 0){
+      PERIODS.length = 0;
+      data.PERIODS.forEach(p => PERIODS.push(p));
+    } else {
+      const allPeriods = new Set();
+      Object.values(data.skuMetrics).forEach(arr => arr.forEach(w => w.period && allPeriods.add(w.period)));
+      if (data.channelWeekly) data.channelWeekly.forEach(r => r.label && allPeriods.add(r.label));
+      expandPeriods(Array.from(allPeriods));
+    }
+    const recalcMetrics = {};
+    data.skuMaster.forEach(s => {
+      const series = data.skuWeeks[s.code] || [];
+      recalcMetrics[s.code] = series.map((w, i) => {
+        const totalSales = series.slice(0, i+1).reduce((sum, item) => sum + (item.sales || 0), 0);
+        let firstBegin = 0;
+        for (let j = 0; j <= i; j++) { if ((series[j].begin || 0) > 0) { firstBegin = series[j].begin; break; } }
+        const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
+        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales / 7 * 30)).toFixed(2) : 99;
+        const turnover = (firstBegin + w.end) > 0 ? +(totalSales / ((firstBegin + w.end) / 2)).toFixed(2) : 0;
+        const dailyAvg = +(w.sales / 7).toFixed(2);
+        const avgPrice = w.sales > 0 ? +(w.gmv / w.sales).toFixed(2) : 0;
+        return { period: PERIODS[i]?.label || '', ...w, ratio, ratioNet, turnover, dailyAvg, avgPrice };
+      });
+    });
+    setSkuMaster(data.skuMaster);
+    setSkuWeeks(data.skuWeeks);
+    setSkuMetrics(recalcMetrics);
+    setChannelWeekly(data.channelWeekly ? data.channelWeekly.map(r => ({...r, label: normalizePeriodLabel(r.label)})) : INITIAL_CHANNEL_WEEKLY);
+    setCost(data.cost || Object.fromEntries(data.skuMaster.map(s=>[s.code,Math.round(s.price*0.3)])));
+    setSupply(data.supply || Object.fromEntries(data.skuMaster.map(s=>[s.code,Math.round(s.price*0.55)])));
+    setCtrl(data.ctrl || Object.fromEntries(data.skuMaster.map(s=>[s.code,Math.round(s.price*0.92)])));
+    /* FIX：导入后若当前选中的 skuCode 不在新主数据里，回退到第一个，避免下方下标访问崩溃 */
+    if(!data.skuMaster.find(s=>s.code===skuCode)){
+      setSkuCode(data.skuMaster[0]?.code || '');
+    }
+    setHasRealData(true);
+    alert('数据加载成功' + (weekCount < 13 ? `（仅 ${weekCount} 周）` : `（${weekCount} 周）`));
+    return true;
+  };
+
+  const importData = (file) => {
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try{
+        const data = JSON.parse(e.target.result);
+        loadDataFromJson(data);
+      }catch(err){ alert('文件解析失败：'+err.message); }
+    };
+    reader.readAsText(file);
+  };
+
+  /* 自动加载：优先 data.json → 其次 URL 参数 ?gist= → 最后 localStorage 缓存的 Gist ID */
+  const [gistIdFromUrl, setGistIdFromUrl] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('gist') || params.get('gist_id') || '';
+  });
+
+  const tryLoadGist = (id) => {
+    if (!id) return;
+    fetch(`https://gist.githubusercontent.com/raw/${id}/data.json?t=${Date.now()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(gistData => {
+        if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+          loadDataFromJson(gistData);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.protocol === 'file:') return;
+    const gistId = gistIdFromUrl || DEFAULT_GIST_ID || localStorage.getItem('zhaofeng_gist_id') || '';
+    if (gistId) {
+      tryLoadGist(gistId);
+    } else {
+      // 兜底：尝试同目录 data.json（本地调试或首次部署场景）
+      fetch('./data.json')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && data.skuMaster && data.skuWeeks) {
+            loadDataFromJson(data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [gistIdFromUrl]);
+
+  const regenerateAll = (newMaster) => {
+    const oldCodes = new Set(skuMaster.map(s=>s.code));
+    const newCodes = new Set(newMaster.map(s=>s.code));
+    const sameSkus = oldCodes.size === newCodes.size && [...oldCodes].every(c => newCodes.has(c));
+    
+    if (sameSkus) {
+      // 只是顺序变化，保留现有周数据、渠道数据、成本/供货价/控价
+      setSkuMaster(newMaster);
+      setSkuMetrics(genSkuMetrics(newMaster, skuWeeks));
+      setCost(prev => {
+        const n = {};
+        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.3); });
+        return n;
+      });
+      setSupply(prev => {
+        const n = {};
+        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.55); });
+        return n;
+      });
+      setCtrl(prev => {
+        const n = {};
+        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.92); });
+        return n;
+      });
+      if(!newMaster.find(s=>s.code===skuCode)){
+        setSkuCode(newMaster[0]?.code||'');
+      }
+      setHasRealData(true);
+    } else {
+      // 有新增/删除 SKU，需要重新生成数据
+      const newWeeks = genSkuWeeks(newMaster);
+      const newMetrics = genSkuMetrics(newMaster, newWeeks);
+      const newChannel = genChannelWeekly(newMaster, newWeeks);
+      setSkuMaster(newMaster);
+      setSkuWeeks(newWeeks);
+      setSkuMetrics(newMetrics);
+      setChannelWeekly(newChannel);
+      setCost(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.3)])));
+      setSupply(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.55)])));
+      setCtrl(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.92)])));
+      if(!newMaster.find(s=>s.code===skuCode)){
+        setSkuCode(newMaster[0]?.code||'');
+      }
+      setHasRealData(true);
+    }
+  };
+
+  const applySkuUpload = (rows, mode) => {
+    try {
+      if (!PERIODS || !Array.isArray(PERIODS)) {
+        alert('页面状态异常：PERIODS 未定义。请强制刷新页面（Ctrl+Shift+R 或 Ctrl+F5）后重试。');
+        return;
+      }
+      expandPeriods(rows.map(r => r.period).filter(Boolean));
+      const ensureLength13 = (arr) => { const out = [...arr]; while (out.length < PERIODS.length) out.push({}); return out; };
+
+      const newWeeks = {...skuWeeks};
+      rows.forEach(r => {
+        const s = skuMaster.find(x => x.code === r.code);
+        if (!s) return;
+        const pIdx = findPeriodIdx(r.period); /* 优化：使用统一函数 */
+        const arr = ensureLength13(newWeeks[r.code] || []);
+        const w = {begin: r.begin, inbound: r.inbound, end: r.end, sales: r.sales, gmv: r.gmv, unitPrice: r.sales > 0 ? +(r.gmv / r.sales).toFixed(2) : 0};
+        if (pIdx >= 0) { arr[pIdx] = w; }
+        else { arr.push(w); }
+        newWeeks[r.code] = arr;
+      });
+
+    const newMetrics = {...skuMetrics};
+    const updatedCodes = new Set(rows.map(r => r.code));
+    updatedCodes.forEach(code => {
+      const series = newWeeks[code];
+      if (!Array.isArray(series)) {
+        console.warn('SKU', code, 'series is not array:', series);
+        return;
+      }
+      newMetrics[code] = series.map((w, i) => {
+        if (!w || typeof w !== 'object') {
+          console.warn('SKU', code, 'week', i, 'invalid data:', w);
+          return { period: PERIODS[i]?.label || '', begin: 0, inbound: 0, end: 0, sales: 0, gmv: 0, unitPrice: 0, ratio: 99, ratioNet: 99, turnover: 0, dailyAvg: 0, avgPrice: 0 };
+        }
+        const totalSales = series.slice(0, i+1).reduce((sum, item) => sum + ((item && item.sales) || 0), 0);
+        let firstBegin = 0;
+        for (let j = 0; j <= i; j++) {
+          const item = series[j];
+          if (item && (item.begin || 0) > 0) { firstBegin = item.begin; break; }
+        }
+        const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
+        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales / 7 * 30)).toFixed(2) : 99;
+        const turnover = (firstBegin + (w.end || 0)) > 0 ? +(totalSales / ((firstBegin + (w.end || 0)) / 2)).toFixed(2) : 0;
+        const dailyAvg = +((w.sales || 0) / 7).toFixed(2);
+        const avgPrice = (w.sales || 0) > 0 ? +((w.gmv || 0) / w.sales).toFixed(2) : 0;
+        return { period: PERIODS[i]?.label || '', ...w, ratio, ratioNet, turnover, dailyAvg, avgPrice };
+      });
+    });
+
+    setSkuWeeks(newWeeks);
+    setSkuMetrics(newMetrics);
+    setHasRealData(true);
+  } catch (err) {
+    console.error('applySkuUpload error:', err);
+    alert('导入失败：' + (err.message || err));
+  }
+  };
+
+  const applyChannelUpload = (rows, mode) => {
+    try {
+      expandPeriods(rows.map(r => r.period).filter(Boolean));
+      const agg = {};
+      rows.forEach(r => {
+        const key = r.period + '|' + r.channel;
+        if (!agg[key]) agg[key] = { period: r.period, channel: r.channel, gmv: 0, vol: 0 };
+        agg[key].gmv += r.gmv;
+        agg[key].vol += r.vol;
+      });
+      setChannelWeekly(p => {
+        // 覆盖模式：重建 channelWeekly，确保每个条目都有 label
+        const n = mode === 'overwrite'
+          ? PERIODS.map(p => ({ label: p.label }))
+          : [...p];
+        // 追加模式：确保 n 长度与 PERIODS 一致，不足的补全
+        while (n.length < PERIODS.length) {
+          n.push({ label: PERIODS[n.length].label });
+        }
+        Object.values(agg).forEach(r => {
+          const idx = findPeriodIdx(r.period); /* 优化：使用统一函数 */
+          if (idx < 0) { console.warn('渠道导入：未找到周期', r.period, 'PERIODS=', PERIODS.map(p=>p.label)); return; }
+          const base = n[idx] || { label: PERIODS[idx]?.label || r.period };
+          const row = { ...base };
+          row['g_' + r.channel] = (row['g_' + r.channel] || 0) + r.gmv;
+          row['v_' + r.channel] = (row['v_' + r.channel] || 0) + r.vol;
+          n[idx] = row;
+        });
+        return n;
+      });
+      setHasRealData(true);
+    } catch (err) {
+      console.error('applyChannelUpload error:', err);
+      alert('导入失败：' + (err.message || err));
+    }
+  };
+
+  const sku = skuMaster.find(s=>s.code===skuCode);
+  const series = skuMetrics[skuCode];
+  const safeSeries = (series && series.length > 0) ? series : null;
+  const cur = safeSeries ? safeSeries[safeSeries.length-1] : null;
+  const prev = (safeSeries && safeSeries.length > 1) ? safeSeries[safeSeries.length-2] : null;
+  const delta = (k)=> (prev && prev[k]) ? ((cur[k]-prev[k])/prev[k])*100 : 0;
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-800">
+      <div className="max-w-7xl mx-auto space-y-5">
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Boxes className="w-6 h-6 text-indigo-600"/>
+            <h1 className="text-xl sm:text-2xl font-bold">兆丰渠道周转 · 全维看板</h1>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hasRealData?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}`}>{hasRealData?'真实数据':'演示数据'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-1.5">
+              {unlocked ? <Unlock className="w-4 h-4 text-green-500"/> : <Lock className="w-4 h-4"/>}
+              隐私模块{unlocked?'已解锁':'已锁定'}
+            </div>
+            {!isReadOnly && (
+              <>
+            <button onClick={()=>setShowSkuManager(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
+              <Boxes className="w-3.5 h-3.5"/>SKU 维护
+            </button>
+            <button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
+              <Settings className="w-3.5 h-3.5"/>设置密码
+            </button>
+            <button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
+              <Download className="w-3.5 h-3.5"/>导出数据
+            </button>
+            <button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
+              <Upload className="w-3.5 h-3.5"/>Gist 同步
+            </button>
+            <input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>
+            <button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors">
+              <Upload className="w-3.5 h-3.5"/>导入数据
+            </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {isReadOnly && !hasRealData && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <span className="font-semibold">数据未加载</span> — 请通过管理员分享的链接（含 <code>?gist=</code> 参数）访问，或检查网络连接。
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {TABS.map(t=>{
+            const Icon=t.icon; const on=tab===t.id;
+            return (
+              <button key={t.id} onClick={()=>setTab(t.id)}
+                className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border font-medium transition-colors ${on?'bg-indigo-600 text-white border-indigo-600':'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
+                <Icon className="w-4 h-4"/>{t.label}
+                {t.lock && !unlocked && <Lock className="w-3 h-3 opacity-70"/>}
+              </button>
+            );
+          })}
+        </div>
+
+        {tab==='sku' && (
+          <div className="space-y-5">
+            <SkuOverviewTable skuMaster={sortedSkuMaster} skuMetrics={skuMetrics} onSelectSku={code=>setSkuCode(code)} />
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-slate-500">选择 SKU</span>
+              <select value={skuCode} onChange={e=>setSkuCode(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                {CATS.map(c=>(
+                  <optgroup key={c.key} label={c.key}>
+                    {sortedSkuMaster.filter(s=>s.cat===c.key).map(s=>(
+                      <option key={s.code} value={s.code}>{s.name}（{s.code}）</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {sku && <span className="text-xs px-2 py-1 rounded-full" style={{background:CAT_COLOR[sku.cat]+'1a',color:CAT_COLOR[sku.cat]}}>{sku.cat}</span>}
+              <div className="flex-1"/>
+              {!isReadOnly && (
+                <button onClick={()=>setShowUploadSku(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                  <Upload className="w-3.5 h-3.5"/>上传单品周数据
+                </button>
+              )}
+            </div>
+
+            {!sku || !cur ? (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400 text-sm">
+                当前 SKU 暂无可用周数据，请选择其它 SKU 或上传数据。
+              </div>
+            ) : (
+            <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <Kpi icon={<Gauge className="w-5 h-5"/>} tint={ratioColor(cur.ratio)} label="库销比（净）"
+                value={cur.ratioNet>=99?'∞':cur.ratioNet.toFixed(2)} sub={`含入库 ${cur.ratio>=99?'∞':cur.ratio.toFixed(2)}`}/>
+              <Kpi icon={<Activity className="w-5 h-5"/>} tint="#0d9488" label="滚动周转率"
+                value={(cur.turnover*100).toFixed(2)+'%'} chg={delta('turnover')}/>
+              <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#6366f1" label="周均日销"
+                value={cur.dailyAvg.toFixed(2)+' 件'} chg={delta('dailyAvg')}/>
+              <Kpi icon={<Tag className="w-5 h-5"/>} tint="#ea580c" label="倒算均价"
+                value={'¥'+cur.avgPrice.toFixed(2)} chg={delta('avgPrice')}/>
+            </div>
+
+            <Card title="库销比趋势" subtitle="蓝=标准库销比（含当周入库）｜橙=净库销比（剔除当周入库）">
+              <div className="h-64 w-full">
+                <ResponsiveContainer>
+                  <LineChart data={safeSeries} margin={{top:5,right:10,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                    <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                    <YAxis tick={{fontSize:12,fill:'#94a3b8'}} domain={[0,'auto']}/>
+                    <Tooltip formatter={v=>v>=99?'∞':v.toFixed(2)}/>
+                    <Legend/>
+                    <Line name="库销比(含入库)" dataKey="ratio" stroke="#6366f1" strokeWidth={2} dot={false}/>
+                    <Line name="库销比(净)" dataKey="ratioNet" stroke="#f97316" strokeWidth={2} dot={false}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card title="滚动周转率趋势" subtitle="售出件数 ÷ ((期初库存+期末库存)/2)">
+                <div className="h-56 w-full">
+                  <ResponsiveContainer>
+                    <AreaChart data={safeSeries}>
+                      <defs><linearGradient id="gT" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35}/><stop offset="100%" stopColor="#0d9488" stopOpacity={0}/>
+                      </linearGradient></defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                      <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                      <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v*100).toFixed(0)+'%'}/>
+                      <Tooltip formatter={v=>(v*100).toFixed(2)+'%'}/>
+                      <Area dataKey="turnover" stroke="#0d9488" strokeWidth={2} fill="url(#gT)"/>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+              <Card title="周均日销 × 倒算均价" subtitle="左轴件/天 ｜ 右轴元">
+                <div className="h-56 w-full">
+                  <ResponsiveContainer>
+                    <ComposedChart data={safeSeries}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                      <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                      <YAxis yAxisId="l" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                      <YAxis yAxisId="r" orientation="right" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                      <Tooltip/>
+                      <Legend/>
+                      <Bar yAxisId="l" name="周均日销" dataKey="dailyAvg" fill="#c7d2fe" radius={[3,3,0,0]}/>
+                      <Line yAxisId="r" name="倒算均价" dataKey="avgPrice" stroke="#ea580c" strokeWidth={2} dot={false}/>
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            <Card title="价格 / 动销 / 库存 联动分析" subtitle="柱=期末库存（左轴件）｜绿线=周销量（左轴件）｜红线=倒算均价（右轴元）— 观察降价对动销与去库存的拉动">
+              <div className="h-72 w-full">
+                <ResponsiveContainer>
+                  <ComposedChart data={safeSeries} margin={{top:5,right:10,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                    <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                    <YAxis yAxisId="l" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                    <YAxis yAxisId="r" orientation="right" tick={{fontSize:12,fill:'#94a3b8'}} domain={['auto','auto']}/>
+                    <Tooltip/>
+                    <Legend/>
+                    <Bar yAxisId="l" name="期末库存" dataKey="end" fill="#e0e7ff" radius={[3,3,0,0]}/>
+                    <Line yAxisId="l" name="周销量" dataKey="sales" stroke="#16a34a" strokeWidth={2} dot={false}/>
+                    <Line yAxisId="r" name="倒算均价" dataKey="avgPrice" stroke="#dc2626" strokeWidth={2} dot={{r:2}}/>
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+            </>
+            )}
+          </div>
+        )}
+
+        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={()=>!isReadOnly && setShowUploadChannel(true)} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly}/>}
+
+        {tab==='profit' && (
+          unlocked
+            ? <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly}/>
+            : <LockGate onUnlock={setUnlocked} passcode={passcode} title="利润监控（隐私模块）" desc="录入各 SKU 成本与供货价，监控毛利与利润率"/>
+        )}
+
+        {tab==='price' && (
+          unlocked
+            ? <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly}/>
+            : <LockGate onUnlock={setUnlocked} passcode={passcode} title="控价监控（隐私模块）" desc="录入公域控价，监控分销商实际单价是否破价"/>
+        )}
+
+        <div className="flex items-start gap-2 text-xs text-slate-400 px-1 pb-4">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0"/>
+          <span>演示数据，口径与你的总表公式一致。库销比(净)已剔除当周入库；滚动周转=售出÷((期初+期末)/2)；倒算均价=GMV÷售出件数。成本/控价支持批量上传（覆盖更新）。</span>
+        </div>
+
+        {showPassSetting && <PasswordSetting current={passcode} onSave={setPasscode} onClose={()=>setShowPassSetting(false)}/>}
+        {showSkuManager && <SkuManager skuMaster={sortedSkuMaster} onSave={regenerateAll} onClose={()=>setShowSkuManager(false)}/>}
+        {showGistSync && <GistSyncModal data={{skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl, PERIODS, version:'v2', exportedAt:Date.now()}} onLoad={loadDataFromJson} onClose={()=>setShowGistSync(false)}/>}
+        <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} skuMaster={skuMaster}/>
+        <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} skuMaster={skuMaster}/>
+      </div>
+    </div>
+  );
+}
+
+function BatchUploadModal({open,onClose,mode,onApply,skuMaster}){
+  const isCost = mode==='cost';
+  const isPrice = mode==='price';
+  const isSku = mode==='sku';
+  const isChannel = mode==='channel';
+  const [step,setStep]=useState('idle');
+  const [fileName,setFileName]=useState('');
+  const [uploadMode,setUploadMode]=useState('overwrite');
+  const [parsed,setParsed]=useState([]);
+  const fileRef = useRef(null);
+
+  const parseCSV = (text)=>{
+    const lines = text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0) return [];
+    const first = lines[0];
+    const hasHeader = isSku ? (first.includes('商品编码')||first.includes('code')) :
+                      isChannel ? (first.includes('渠道')||first.includes('channel')) :
+                      isCost ? (first.includes('商品编码')||first.includes('成本')||first.includes('cost')||first.includes('供货')) :
+                      (first.includes('控价')||first.includes('price'));
+    const startIdx = hasHeader ? 1 : 0;
+    const rows=[];
+    for(let i=startIdx;i<lines.length;i++){
+      const line=lines[i].trim();
+      if(!line) continue;
+      const cols=[];
+      let cur='';
+      let inQuote=false;
+      for(let j=0;j<line.length;j++){
+        const ch=line[j];
+        if(ch==='"'){inQuote=!inQuote;}
+        else if(ch===',' && !inQuote){cols.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      cols.push(cur.trim());
+      rows.push(cols);
+    }
+    return rows;
+  };
+
+  const validateRows = (rawRows)=>{
+    if(isSku){
+      return rawRows.map(cols=>{
+        const [code,period,beginStr,inboundStr,salesStr,gmvStr,endStr]=cols;
+        const s=skuMaster.find(x=>x.code===code);
+        if(!s) return {code:code||'',name:'',period:period||'',begin:0,inbound:0,sales:0,gmv:0,end:0,status:'err',msg:'商品编码不存在'};
+        const begin=parseInt(beginStr.replace(/,/g,''))||0;
+        const inbound=parseInt(inboundStr.replace(/,/g,''))||0;
+        const sales=parseInt(salesStr.replace(/,/g,''))||0;
+        const gmv=parseInt(gmvStr.replace(/,/g,''))||0;
+        const end=parseInt(endStr.replace(/,/g,''))||0;
+        if([begin,inbound,sales,gmv,end].some(v=>isNaN(v))){
+          return {code:s.code,name:s.name,period:period||'',begin,inbound,sales,gmv,end,status:'err',msg:'数值字段必须为数字'};
+        }
+        return {code:s.code,name:s.name,period:period||'',begin,inbound,sales,gmv,end,status:'ok',msg:''};
+      });
+    }
+    if(isChannel){
+      const firstRow = rawRows[0];
+      // 矩阵格式：列数 >= 6（周期, 商品编码, 商品名称, 各渠道数量+金额）
+      // 纵向格式：列数 = 4（周期, 渠道, 销售额, 销售量）
+      const isMatrix = firstRow && firstRow.length >= 6;
+      if(isMatrix){
+        const startRow = firstRow.some(c => c && (c.includes('商品编码')||c.includes('周期')||c.includes('code'))) ? 1 : 0;
+        const headers = firstRow.map(h => (h||'').trim());
+        const channels = [];
+        for(let i=0;i<headers.length;i++){
+          const col = headers[i];
+          if(col.endsWith('数量')){
+            const chName = col.slice(0,-2);
+            let gmvIdx = headers.findIndex((h,hi) => hi>i && h === chName+'金额');
+            if(gmvIdx < 0) {
+              gmvIdx = headers.findIndex((h,hi) => hi>i && h === col+'金额');
+            }
+            if(gmvIdx>=0) channels.push({name:chName,volIdx:i,gmvIdx});
+          }
+        }
+        if(channels.length === 0){
+          return [{status:'err',msg:'未识别到渠道列。请检查列名格式是否为：{渠道名}数量、{渠道名}金额（如：美团医药数量、美团医药金额）'}];
+        }
+        const results = [];
+        for(let i=startRow;i<rawRows.length;i++){
+          const row = rawRows[i];
+          if(!row || row.length===0) continue;
+          const period = (row[0]||'').trim();
+          channels.forEach(ch => {
+            const vol = parseInt((row[ch.volIdx]||'').replace(/,/g,''))||0;
+            const gmv = parseInt((row[ch.gmvIdx]||'').replace(/,/g,''))||0;
+            results.push({period,channel:ch.name,gmv,vol,status:'ok',msg:''});
+          });
+        }
+        if(results.length === 0){
+          return [{status:'err',msg:'未找到数据行。请检查文件是否有数据（不止表头）'}];
+        }
+        return results;
+      }
+      return rawRows.map(cols=>{
+        const [period,channel,gmvStr,volStr]=cols;
+        if(!CHANNELS.includes(channel)) return {period:period||'',channel:channel||'',gmv:0,vol:0,status:'err',msg:'渠道名称不存在'};
+        const gmv=parseInt((gmvStr||'').replace(/,/g,''))||0;
+        const vol=parseInt((volStr||'').replace(/,/g,''))||0;
+        if(isNaN(gmv)||isNaN(vol)) return {period:period||'',channel,gmv,vol,status:'err',msg:'数值字段必须为数字'};
+        return {period:period||'',channel,gmv,vol,status:'ok',msg:''};
+      });
+    }
+    const dataRows = rawRows.filter(cols => {
+      const code = (cols[0] || '').trim();
+      return code !== '商品编码' && code !== '编码' && code !== 'code' && code !== 'Code' && code !== '商品';
+    });
+    return dataRows.map(cols=>{
+      if(isCost){
+        const [code,name,cStr,spStr,date]=cols;
+        const s=skuMaster.find(x=>x.code===code);
+        if(!s) return {code:code||'',name:name||'',c:0,sp:0,date:date||'',status:'err',msg:'商品编码不存在'};
+        const c=parseFloat(cStr.replace(/,/g,''))||0;
+        const sp=parseFloat(spStr.replace(/,/g,''))||0;
+        if(isNaN(c)||isNaN(sp)) return {code:s.code,name:s.name,c,sp,date:date||'',status:'err',msg:'成本/供货价必须为数字'};
+        return {code:s.code,name:s.name,c,sp,date:date||'',status:'ok',msg:''};
+      }
+      const [code,name,cpStr,date]=cols;
+      const s=skuMaster.find(x=>x.code===code);
+      if(!s) return {code:code||'',name:name||'',cp:0,date:date||'',status:'err',msg:'商品编码不存在'};
+      const cp=parseInt(cpStr.replace(/,/g,''))||0;
+      if(isNaN(cp)) return {code:s.code,name:s.name,cp,date:date||'',status:'err',msg:'控价必须为数字'};
+      return {code:s.code,name:s.name,cp,date:date||'',status:'ok',msg:''};
+    });
+  };
+
+  const handleFile=(file)=>{
+    if(!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if(ext==='xlsx' || ext==='xls'){
+      alert('当前仅支持 .csv 格式上传。请将 Excel 文件「另存为」CSV (UTF-8) 后重新上传。');
+      return;
+    }
+    setFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const text=e.target.result;
+      const rawRows=parseCSV(text);
+      const validated=validateRows(rawRows);
+      setParsed(validated);
+      setStep('validated');
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSelect=()=>{if(fileRef.current) fileRef.current.click();};
+  const handleDrop=(e)=>{e.preventDefault(); const files=e.dataTransfer.files; if(files.length>0) handleFile(files[0]);};
+  const handleDragOver=(e)=>{e.preventDefault();};
+
+  if(!open) return null;
+  const okRows = parsed.filter(r=>r.status==='ok');
+  const errCount = parsed.length-okRows.length;
+  const reset=()=>{setStep('idle');setFileName('');setUploadMode('overwrite');setParsed([]);};
+  const close=()=>{reset();onClose();};
+  const confirm=()=>{onApply(okRows, uploadMode);setStep('done');};
+  const titles = {sku:'单品周数据上传',channel:'渠道周数据上传',cost:'成本 / 供货价批量上传',price:'公域控价批量上传'};
+  const title = titles[mode] || '批量上传';
+  const infos = {
+    sku:'批量导入各 SKU 的进销存数据。必填字段：商品编码、周期、期初库存、入库数、销售数量、GMV、期末库存。',
+    channel:'批量导入各渠道周度数据。支持两种格式：\n1. 矩阵格式（推荐）：周期、商品编码、商品名称、各渠道数量+金额列（如：美团医药数量、美团医药金额、爱库存数量、爱库存金额）\n2. 纵向格式：周期、渠道名称、销售额、销售量。',
+    cost:'批量导入各 SKU 的成本与供货价。必填字段：商品编码、成本、供货价、生效日期。',
+    price:'批量导入各 SKU 的公域控价。必填字段：商品编码、公域控价、生效日期。'
+  };
+  const info = infos[mode] || '';
+  const bgColors = {sku:'bg-blue-50',channel:'bg-purple-50',cost:'bg-emerald-50',price:'bg-amber-50'};
+  const iconColors = {sku:'text-blue-600',channel:'text-purple-600',cost:'text-emerald-600',price:'text-amber-600'};
+  const bgColor = bgColors[mode] || 'bg-slate-50';
+  const iconColor = iconColors[mode] || 'text-slate-600';
+
+  const downloadTemplate = () => {
+    const BOM = '\uFEFF';
+    let csv = '';
+    if(mode==='sku'){
+      csv = '商品编码,周期,期初库存,入库数,销售数量,GMV,期末库存\n';
+      skuMaster.forEach(s=>{csv+=s.code+','+PERIODS[0].label+',100,0,50,6500,50\n';});}
+    else if(mode==='channel'){
+      csv = '周期,商品编码,商品名称';
+      CHANNELS.forEach(ch=>{csv+=','+ch+'数量,'+ch+'金额';});
+      csv += '\n';
+      skuMaster.slice(0,3).forEach(s=>{
+        csv += PERIODS[0].label+','+s.code+','+s.name;
+        CHANNELS.forEach(ch=>{csv+=',50,5000';});
+        csv += '\n';
+      });}
+    else if(mode==='cost'){
+      csv = '商品编码,商品名称,成本（元）,供货价（元）,生效日期\n';
+      skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+Math.round(s.price*0.3)+','+Math.round(s.price*0.55)+',2026-06-15\n';});}
+    else if(mode==='price'){
+      csv = '商品编码,商品名称,公域控价（元）,生效日期\n';
+      skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+Math.round(s.price*0.92)+',2026-06-15\n';});}
+    const blob = new Blob([BOM+csv], {type: 'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '模板_'+title+'.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-600"/>{title}</h3>
+          <button onClick={close} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className={`flex items-start gap-3 rounded-lg p-3 ${bgColor}`}>
+            <Info className={`w-4 h-4 mt-0.5 shrink-0 ${iconColor}`}/>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {info}
+              <span className="font-medium text-slate-700"> 导入方式：{uploadMode==='overwrite'?'覆盖全部历史数据':'仅追加最新一周'}。</span>
+            </p>
+          </div>
+
+          {step==='idle' && (
+            <div className="space-y-3">
+              <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <Download className="w-4 h-4"/>下载导入模板
+              </button>
+              <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" className="hidden" onChange={e=>{handleFile(e.target.files[0]);e.target.value='';}}/>
+              <div onClick={handleSelect} onDrop={handleDrop} onDragOver={handleDragOver}
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 py-10 hover:border-indigo-400 hover:bg-indigo-50 transition-colors cursor-pointer">
+                <div className="rounded-full bg-slate-100 p-2.5 text-slate-500"><Upload className="w-5 h-5"/></div>
+                <p className="text-sm font-medium text-slate-700">点击选择文件 或 拖拽至此</p>
+                <p className="text-xs text-slate-400">支持 .csv（UTF-8），单次最多 5000 行</p>
+              </div>
+            </div>
+          )}
+
+          {step==='validated' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                <div className="flex items-center gap-2 text-sm text-slate-700"><FileSpreadsheet className="w-4 h-4 text-emerald-600"/>{fileName}</div>
+                <button onClick={reset} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-700"><FileSpreadsheet className="w-4 h-4"/>共读取 <b>{parsed.length}</b> 行</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700"><CheckCircle2 className="w-4 h-4"/>校验通过 <b>{okRows.length}</b> 行</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600"><AlertCircle className="w-4 h-4"/>异常 <b>{errCount}</b> 行</span>
+                {errCount>0 && <button className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"><Download className="w-3.5 h-3.5"/>导出错误清单</button>}
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      {mode==='sku' && (
+                        <><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">周期</th>
+                        <th className="px-3 py-2 font-medium text-right">期初</th><th className="px-3 py-2 font-medium text-right">入库</th>
+                        <th className="px-3 py-2 font-medium text-right">销售</th><th className="px-3 py-2 font-medium text-right">GMV</th>
+                        <th className="px-3 py-2 font-medium text-right">期末</th><th className="px-3 py-2 font-medium">校验</th></>
+                      )}
+                      {mode==='channel' && (
+                        <><th className="px-3 py-2 font-medium">周期</th><th className="px-3 py-2 font-medium">渠道</th>
+                        <th className="px-3 py-2 font-medium text-right">销售额</th><th className="px-3 py-2 font-medium text-right">销售量</th>
+                        <th className="px-3 py-2 font-medium">校验</th></>
+                      )}
+                      {mode==='cost' && (
+                        <><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">名称</th>
+                        <th className="px-3 py-2 font-medium text-right">成本</th><th className="px-3 py-2 font-medium text-right">供货价</th>
+                        <th className="px-3 py-2 font-medium">生效日期</th><th className="px-3 py-2 font-medium">校验</th></>
+                      )}
+                      {mode==='price' && (
+                        <><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">名称</th>
+                        <th className="px-3 py-2 font-medium text-right">公域控价</th><th className="px-3 py-2 font-medium">生效日期</th>
+                        <th className="px-3 py-2 font-medium">校验</th></>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsed.map((r,i)=>{
+                      const isErr = r.status==='err';
+                      const rowCls = `border-t border-slate-100 ${isErr?'bg-red-50':''}`;
+                      return (
+                      <tr key={i} className={rowCls}>
+                        {mode==='sku' && (
+                          <><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-500">{r.period}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.begin}</td><td className="px-3 py-2 text-right tabular-nums">{r.inbound}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.sales}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.gmv}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.end}</td>
+                          <td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>
+                        )}
+                        {mode==='channel' && (
+                          <><td className="px-3 py-2 text-slate-500">{r.period}</td><td className="px-3 py-2 text-slate-700">{r.channel}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">¥{r.gmv}</td><td className="px-3 py-2 text-right tabular-nums">{r.vol}</td>
+                          <td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>
+                        )}
+                        {mode==='cost' && (
+                          <><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-700">{r.name}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">¥{r.c.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.sp.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-slate-500">{r.date||'—'}</td>
+                          <td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>
+                        )}
+                        {mode==='price' && (
+                          <><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-700">{r.name}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">¥{r.cp}</td><td className="px-3 py-2 text-slate-500">{r.date||'—'}</td>
+                          <td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>
+                        )}
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <span className="text-slate-500">导入方式：</span>
+                <button onClick={()=>setUploadMode('overwrite')} className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${uploadMode==='overwrite'?'bg-indigo-100 text-indigo-700':'text-slate-600 hover:bg-slate-100'}`}>覆盖全部历史数据</button>
+                <button onClick={()=>setUploadMode('append')} className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${uploadMode==='append'?'bg-indigo-100 text-indigo-700':'text-slate-600 hover:bg-slate-100'}`}>仅追加最新一周</button>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={reset} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">取消</button>
+                <button onClick={confirm} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">确认导入 {okRows.length} 行</button>
+              </div>
+            </div>
+          )}
+
+          {step==='done' && (
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <CheckCircle2 className="w-12 h-12 text-emerald-500"/>
+              <p className="text-lg font-semibold">导入成功</p>
+              <p className="text-sm text-slate-500">
+                {okRows.length === 0 && errCount === 0 
+                  ? '未检测到可导入数据。请检查：1. 文件是否为 CSV 格式；2. 文件是否有数据行（不止表头）；3. 列名是否与模板一致。'
+                  : `已${uploadMode==='overwrite'?'覆盖更新':'追加最新'} ${okRows.length} 行，跳过异常 ${errCount} 行`
+                }
+              </p>
+              <button onClick={close} className="mt-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700">完成</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkuManager({skuMaster,onSave,onClose}){
+  const [rows,setRows]=useState(()=>skuMaster.map(s=>({code:s.code,name:s.name,cat:s.cat,status:'ok',msg:''})));
+  const [err,setErr]=useState('');
+  const [csvInfo,setCsvInfo]=useState(null);
+  const fileRef=useRef(null);
+
+  const detectDelimiter=(text)=>{
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0)return ',';
+    const delimiters=[',',';','\t'];
+    let best=',';let max=0;
+    for(const d of delimiters){
+      const re=new RegExp(d==='\t'?'\\t':d.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');
+      const cnt=(lines[0].match(re)||[]).length;
+      if(cnt>max){max=cnt;best=d;}
+    }
+    return best;
+  };
+
+  const parseCSV=(text)=>{
+    text=text.replace(/^\uFEFF/,'');
+    const delimiter=detectDelimiter(text);
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0)return [];
+    const first=lines[0];
+    const hasHeader=first.includes('编码')||first.includes('code')||first.includes('商品')||first.includes('名称');
+    const startIdx=hasHeader?1:0;
+    const out=[];
+    for(let i=startIdx;i<lines.length;i++){
+      const line=lines[i].trim(); if(!line)continue;
+      const cols=[];let cur='';let inQuote=false;
+      for(let j=0;j<line.length;j++){
+        const ch=line[j];
+        if(ch==='"'){inQuote=!inQuote;}
+        else if(ch===delimiter&&!inQuote){cols.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      cols.push(cur.trim());
+      out.push(cols);
+    }
+    return out;
+  };
+
+  const validateCsvRow=(cols)=>{
+    const [code,name,cat]=cols;
+    if(!code||!code.trim())return{code:'',name:'',cat:'',status:'err',msg:'编码不能为空'};
+    if(!name||!name.trim())return{code:code.trim(),name:'',cat:'',status:'err',msg:'名称不能为空'};
+    if(!CATS.find(c=>c.key===cat))return{code:code.trim(),name:name.trim(),cat,status:'err',msg:'品类不存在：'+cat};
+    return{code:code.trim(),name:name.trim(),cat,status:'ok',msg:''};
+  };
+
+  const applyCsvRows=(validated)=>{
+    const okRows=validated.filter(r=>r.status==='ok');
+    const errRows=validated.filter(r=>r.status==='err');
+    setRows(p=>{
+      let updated=[...p];
+      okRows.forEach(r=>{
+        const idx=updated.findIndex(x=>x.code===r.code);
+        if(idx>=0){updated[idx]={...r,status:'ok',msg:''};}
+        else{updated.push({...r,status:'ok',msg:''});}
+      });
+      errRows.forEach(r=>{
+        updated.push({...r});
+      });
+      return updated;
+    });
+    setCsvInfo({total:validated.length,ok:okRows.length,err:errRows.length});
+  };
+
+  const handleFile=(file)=>{
+    if(!file)return;
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(ext!=='csv'){setErr('仅支持 .csv 格式');return;}
+    setErr('');
+    setCsvInfo(null);
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const buf=new Uint8Array(e.target.result);
+      let text;
+      try{
+        text=new TextDecoder('utf-8',{fatal:true}).decode(buf);
+      }catch(err){
+        try{
+          text=new TextDecoder('gbk').decode(buf);
+        }catch(err2){
+          setErr('文件编码无法识别（请用记事本打开→另存为→UTF-8）');
+          return;
+        }
+      }
+      const raw=parseCSV(text);
+      if(raw.length===0){
+        setErr('CSV 内容为空，请检查文件');
+        return;
+      }
+      const validated=raw.map(cols=>validateCsvRow(cols));
+      applyCsvRows(validated);
+    };
+    reader.onerror=()=>{setErr('文件读取失败');};
+    reader.readAsArrayBuffer(file);
+  };
+  const handleDrop=(e)=>{e.preventDefault();const files=e.dataTransfer.files;if(files.length>0)handleFile(files[0]);};
+  const handleDragOver=(e)=>{e.preventDefault();};
+  const handleSelect=()=>{if(fileRef.current)fileRef.current.click();};
+
+  const downloadTemplate=()=>{
+    const BOM='\uFEFF';
+    let csv='商品编码,名称,品类\n';
+    skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+s.cat+'\n';});
+    const blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='模板_SKU维护.csv';a.click();URL.revokeObjectURL(url);
+  };
+
+  const moveRow = (i, dir) => {
+    if ((dir === -1 && i === 0) || (dir === 1 && i === rows.length - 1)) return;
+    const newRows = [...rows];
+    [newRows[i], newRows[i + dir]] = [newRows[i + dir], newRows[i]];
+    setRows(newRows);
+  };
+  const addRow=()=>{
+    setRows(p=>[...p,{code:'',name:'',cat:CATS[0].key,status:'ok',msg:''}]);
+  };
+  const removeRow=(i)=>{setRows(p=>p.filter((_,idx)=>idx!==i));};
+  const updateRow=(i,k,v)=>{setRows(p=>{const n=[...p];n[i]={...n[i],[k]:v,status:'ok',msg:''};return n;});};
+  const validate=()=>{
+    const codes=new Set();
+    for(const r of rows){
+      if(r.status==='err')return '请先修正表格中标红的异常行';
+      if(!r.code.trim())return '编码不能为空';
+      if(codes.has(r.code.trim()))return '编码重复：'+r.code;
+      codes.add(r.code.trim());
+      if(!r.name.trim())return '名称不能为空';
+      if(!CATS.find(c=>c.key===r.cat))return '品类不存在：'+r.cat;
+    }
+    return '';
+  };
+  const submit=()=>{
+    const msg=validate();
+    if(msg){setErr(msg);return;}
+    setErr('');
+    /* 说明：新增/修改 SKU 会保留原 SKU 的 price/demand/profile，
+       仅在新增时以默认值兜底。 */
+    onSave(rows.map((r, i) => {
+      const old = skuMaster.find(s=>s.code===r.code.trim());
+      return {
+        code:r.code.trim(), name:r.name.trim(), cat:r.cat,
+        price: old?.price ?? 100,
+        demand: old?.demand ?? 200,
+        profile: old?.profile ?? 'healthy',
+        sortOrder: i,
+      };
+    }));
+    onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2"><Boxes className="w-5 h-5 text-indigo-600"/>SKU 维护</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500">当前共 {rows.length} 个 SKU。添加、删除或修改后点击保存，看板数据将自动重新生成。</p>
+          {err && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+          {csvInfo && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              <CheckCircle2 className="w-4 h-4"/>
+              CSV 解析完成：覆盖/新增 {csvInfo.ok} 行，异常 {csvInfo.err} 行。
+              <button onClick={()=>setCsvInfo(null)} className="text-emerald-800 underline text-xs ml-2">清除</button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <Download className="w-3.5 h-3.5"/>下载导入模板
+            </button>
+            <input type="file" ref={fileRef} accept=".csv" className="hidden" onChange={e=>{handleFile(e.target.files[0]);e.target.value='';}}/>
+            <button onClick={handleSelect} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <Upload className="w-3.5 h-3.5"/>上传 CSV
+            </button>
+          </div>
+          <div onDrop={handleDrop} onDragOver={handleDragOver}
+            className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 py-6 hover:border-indigo-400 hover:bg-indigo-50 transition-colors cursor-pointer"
+            onClick={handleSelect}>
+            <p className="text-xs text-slate-500">或拖拽 CSV 文件到此处</p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">编码</th>
+                  <th className="px-3 py-2 font-medium">名称</th>
+                  <th className="px-3 py-2 font-medium">品类</th>
+                  <th className="px-3 py-2 font-medium">校验</th>
+                  <th className="px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r,i)=>{
+                  const isErr = r.status==='err';
+                  const isNew = !skuMaster.find(s=>s.code===r.code);
+                  const rowCls = `border-t border-slate-100 ${isErr?'bg-red-50':isNew?'bg-blue-50':''}`;
+                  return (
+                    <tr key={i} className={rowCls}>
+                      <td className="px-3 py-2"><input value={r.code} onChange={e=>updateRow(i,'code',e.target.value)} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm font-mono"/></td>
+                      <td className="px-3 py-2"><input value={r.name} onChange={e=>updateRow(i,'name',e.target.value)} className="w-48 border border-slate-200 rounded px-2 py-1 text-sm"/></td>
+                      <td className="px-3 py-2">
+                        <select value={r.cat} onChange={e=>updateRow(i,'cat',e.target.value)} className="border border-slate-200 rounded px-2 py-1 text-sm">
+                          {CATS.map(c=><option key={c.key} value={c.key}>{c.key}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        {isErr
+                          ? <span className="inline-flex items-center gap-1 text-red-600 text-xs"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>
+                          : <span className="inline-flex items-center gap-1 text-emerald-600 text-xs"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>
+                        }
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={()=>moveRow(i,-1)} disabled={i===0} className={`text-xs px-1.5 py-0.5 rounded border ${i===0?'text-slate-300 border-slate-100':'text-slate-500 border-slate-200 hover:bg-slate-100'}`}>↑</button>
+                          <button onClick={()=>moveRow(i,1)} disabled={i===rows.length-1} className={`text-xs px-1.5 py-0.5 rounded border ${i===rows.length-1?'text-slate-300 border-slate-100':'text-slate-500 border-slate-200 hover:bg-slate-100'}`}>↓</button>
+                          <button onClick={()=>removeRow(i)} className="text-red-400 hover:text-red-600 text-xs ml-1">删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={addRow} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            + 添加 SKU
+          </button>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">取消</button>
+            <button onClick={submit} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">保存并重新生成数据</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChannelView({channelWeekly,onUpload,isReadOnly}){
+  const [metric,setMetric] = useState('g');
+  const prefix = metric==='g'?'g_':'v_';
+  const data = channelWeekly;
+
+  // 动态从 channelWeekly 提取所有渠道
+  const allChannels = useMemo(()=>{
+    const chSet = new Set();
+    data.forEach(row=>{
+      Object.keys(row).forEach(k=>{
+        if(k.startsWith('g_')) chSet.add(k.slice(2));
+      });
+    });
+    return Array.from(chSet);
+  },[data]);
+
+  const [active,setActive] = useState([]);
+  useEffect(()=>{
+    if(allChannels.length>0 && active.length===0){
+      setActive(allChannels.slice(0,6));
+    }
+  },[allChannels]);
+  const toggle = ch => setActive(p=>p.includes(ch)?p.filter(x=>x!==ch):[...p,ch]);
+  const chColor = ch => CH_COLOR[allChannels.indexOf(ch) % CH_COLOR.length];
+
+  const last = data.length>0 ? data[data.length-1] : {};
+  const lastLabel = last.label || '—';
+  const rankRaw = allChannels.map(ch=>({name:ch,val:last[prefix+ch]||0})).filter(r=>r.val>0).sort((a,b)=>b.val-a.val);
+  const weekTotal = rankRaw.reduce((sum,r)=>sum+r.val,0);
+  const rank = rankRaw.slice(0,10).map(r=>({...r, pct: weekTotal>0 ? +((r.val/weekTotal)*100).toFixed(1) : 0}));
+  const top10Total = rank.reduce((sum,r)=>sum+r.val,0);
+  const top10Share = weekTotal>0 ? +(top10Total/weekTotal*100).toFixed(1) : 0;
+
+  const histRaw = allChannels.map(ch=>{
+    const total = data.reduce((sum,row)=>sum+(row[prefix+ch]||0),0);
+    return {name:ch,val:total};
+  }).filter(r=>r.val>0).sort((a,b)=>b.val-a.val);
+  const histTotal = histRaw.reduce((sum,r)=>sum+r.val,0);
+  const histRank = histRaw.slice(0,10).map(r=>({...r, pct: histTotal>0 ? +((r.val/histTotal)*100).toFixed(1) : 0}));
+  const histTop10Total = histRank.reduce((sum,r)=>sum+r.val,0);
+  const histTop10Share = histTotal>0 ? +(histTop10Total/histTotal*100).toFixed(1) : 0;
+
+  const shareSeries = useMemo(()=> data.map(row=>{
+    const total = allChannels.reduce((a,ch)=>a+(row['g_'+ch]||0),0);
+    const o = { label:row.label };
+    allChannels.forEach(ch=>{ o[ch] = total>0 ? +((row['g_'+ch]||0)/total*100).toFixed(2) : 0; });
+    return o;
+  }),[data,allChannels]);
+  const lastShare = shareSeries.length>0 ? shareSeries[shareSeries.length-1] : {};
+  const prevShare = shareSeries.length>1 ? shareSeries[shareSeries.length-2] : {};
+  const shareDeltas = allChannels.map((ch)=>({
+    name:ch, color:chColor(ch),
+    cur:lastShare[ch]||0, delta:+((lastShare[ch]||0)-(prevShare[ch]||0)).toFixed(2),
+  }));
+
+  const cumData = useMemo(()=>{
+    const acc = {};
+    return data.map(row=>{
+      const out = { label: row.label };
+      allChannels.forEach(ch=>{
+        const k = prefix+ch;
+        acc[k] = (acc[k]||0) + (row[k]||0);
+        out[k] = acc[k];
+      });
+      return out;
+    });
+  },[data,allChannels,prefix]);
+
+  const cumShareSeries = useMemo(()=> cumData.map(row=>{
+    const total = allChannels.reduce((a,ch)=>a+(row[prefix+ch]||0),0);
+    const o = { label: row.label };
+    allChannels.forEach(ch=>{ o[ch] = total>0 ? +((row[prefix+ch]||0)/total*100).toFixed(2) : 0; });
+    return o;
+  }),[cumData,allChannels,prefix]);
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-500 mr-1">渠道</span>
+        {allChannels.map((ch)=>{
+          const on=active.includes(ch);
+          return <button key={ch} onClick={()=>toggle(ch)} className="text-xs px-2.5 py-1 rounded-full border"
+            style={{borderColor:on?chColor(ch):'#e2e8f0',background:on?chColor(ch):'#fff',color:on?'#fff':'#64748b'}}>{ch}</button>;
+        })}
+        <div className="flex-1"/>
+        {isReadOnly ? null : (
+          <button onClick={onUpload}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+            <Upload className="w-3.5 h-3.5"/>上传渠道周数据
+          </button>
+        )}
+        <div className="flex rounded-lg overflow-hidden border border-slate-200">
+          {[['g','销售额'],['v','销售量']].map(([k,l])=>(
+            <button key={k} onClick={()=>setMetric(k)} className={`text-sm px-4 py-1.5 font-medium ${metric===k?'bg-indigo-600 text-white':'bg-white text-slate-500'}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <Card title={`各渠道周度${metric==='g'?'销售额':'销售量'}趋势`} subtitle={`已选 ${active.length} 个渠道 · 全 ${data.length} 周`}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer>
+            <LineChart data={data} margin={{top:5,right:10,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>metric==='g'?(v/10000).toFixed(0)+'万':v}/>
+              <Tooltip formatter={v=>metric==='g'?'¥'+fmtMoney(v):fmtNum(v)+' 件'}/>
+              <Legend/>
+              {active.map(ch=>{const i=allChannels.indexOf(ch);return (
+                <Line key={ch} name={ch} dataKey={prefix+ch} stroke={CH_COLOR[i % CH_COLOR.length]} strokeWidth={2} dot={false}/>
+              );})}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title="各渠道销售额占比变化（每周）" subtitle="以销售额(GMV)为基数 · 卡片数值=当周占比，pp=环比上周百分点变化 · 折线为占比趋势">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          {shareDeltas.filter(d=>active.includes(d.name)).map(d=>{
+            const up=d.delta>=0;
+            return (
+              <div key={d.name} className="rounded-lg border border-slate-200 p-2.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{background:d.color}}/>
+                  <span className="text-xs text-slate-500 truncate">{d.name}</span>
+                </div>
+                <div className="mt-1 text-lg font-bold tabular-nums">{d.cur}%</div>
+                <div className={`text-xs flex items-center gap-0.5 ${up?'text-green-600':'text-red-500'}`}>
+                  {up?<TrendingUp className="w-3 h-3"/>:<TrendingDown className="w-3 h-3"/>}
+                  {up?'+':''}{d.delta} pp
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="h-72 w-full">
+          <ResponsiveContainer>
+            <LineChart data={shareSeries} margin={{top:5,right:10,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>v+'%'}/>
+              <Tooltip formatter={v=>v+'%'}/>
+              <Legend/>
+              {active.map(ch=>{const i=allChannels.indexOf(ch);return (
+                <Line key={ch} name={ch} dataKey={ch} stroke={CH_COLOR[i % CH_COLOR.length]} strokeWidth={2} dot={false}/>
+              );})}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title={`各渠道历史滚动累积${metric==='g'?'销售额':'销售量'}趋势`} subtitle={`已选 ${active.length} 个渠道 · 全 ${data.length} 周滚动累加`}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer>
+            <LineChart data={cumData} margin={{top:5,right:10,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>metric==='g'?(v/10000).toFixed(0)+'万':v}/>
+              <Tooltip formatter={v=>metric==='g'?'¥'+fmtMoney(v):fmtNum(v)+' 件'}/>
+              <Legend/>
+              {active.map(ch=>{const i=allChannels.indexOf(ch);return (
+                <Line key={ch} name={ch} dataKey={prefix+ch} stroke={CH_COLOR[i % CH_COLOR.length]} strokeWidth={2} dot={false}/>
+              );})}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title="各渠道历史滚动累积销售额占比变化" subtitle="以累积销售额(GMV)为基数 · 折线为累积占比趋势">
+        <div className="h-72 w-full">
+          <ResponsiveContainer>
+            <LineChart data={cumShareSeries} margin={{top:5,right:10,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>v+'%'}/>
+              <Tooltip formatter={v=>v+'%'}/>
+              <Legend/>
+              {active.map(ch=>{const i=allChannels.indexOf(ch);return (
+                <Line key={ch} name={ch} dataKey={ch} stroke={CH_COLOR[i % CH_COLOR.length]} strokeWidth={2} dot={false}/>
+              );})}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title={`当周渠道${metric==='g'?'销售额':'销售量'}排名（Top10）`} subtitle={`${lastLabel} 当周 · Top10 占总和 ${top10Share}%`}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer>
+            <ComposedChart data={rank} layout="vertical" margin={{left:30,right:40}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false}/>
+              <XAxis type="number" tick={{fontSize:11,fill:'#94a3b8'}} tickFormatter={v=>metric==='g'?(v/10000).toFixed(0)+'万':v}/>
+              <YAxis type="category" dataKey="name" width={78} tick={{fontSize:11,fill:'#475569'}}/>
+              <Tooltip formatter={(v,n)=>metric==='g'?'¥'+fmtMoney(v):fmtNum(v)+' 件'}/>
+              <Bar dataKey="val" radius={[0,4,4,0]} fill="#6366f1">
+                <LabelList dataKey="pct" formatter={(v)=>`${v}%`} position="right" style={{fontSize:11,fill:'#64748b'}} />
+              </Bar>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <Card title={`历史渠道${metric==='g'?'销售额':'销售量'}排名（Top10）`} subtitle={`全 ${data.length} 周累计 · Top10 占总和 ${histTop10Share}%`}>
+        <div className="h-80 w-full">
+          <ResponsiveContainer>
+            <ComposedChart data={histRank} layout="vertical" margin={{left:30,right:40}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false}/>
+              <XAxis type="number" tick={{fontSize:11,fill:'#94a3b8'}} tickFormatter={v=>metric==='g'?(v/10000).toFixed(0)+'万':v}/>
+              <YAxis type="category" dataKey="name" width={78} tick={{fontSize:11,fill:'#475569'}}/>
+              <Tooltip formatter={(v,n)=>metric==='g'?'¥'+fmtMoney(v):fmtNum(v)+' 件'}/>
+              <Bar dataKey="val" radius={[0,4,4,0]} fill="#0d9488">
+                <LabelList dataKey="pct" formatter={(v)=>`${v}%`} position="right" style={{fontSize:11,fill:'#64748b'}} />
+              </Bar>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly}){
+  const [showUpload,setShowUpload]=useState(false);
+  const [profitSkuCode,setProfitSkuCode]=useState(skuMaster[0]?.code||'');
+  const applyUpload = rows=>{
+    setCost(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.c;});return n;});
+    setSupply(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.sp;});return n;});
+  };
+
+  const last = PERIODS.length-1;
+  /* FIX：skuWeeks[s.code][last] 加可选链，避免某 SKU 无周数据时崩溃 */
+  const rows = skuMaster.map(s=>{
+    const c=+cost[s.code]||0, sp=+supply[s.code]||0;
+    const unit=sp-c, margin=sp>0?unit/sp*100:0;
+    const wkSales=skuWeeks[s.code]?.[last]?.sales || 0;
+    return {...s, c, sp, unit, margin, wkSales, wkProfit:unit*wkSales};
+  });
+  const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
+  const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
+  const avgMargin = totalRev>0?totalProfit/totalRev*100:0;
+  const trend = PERIODS.map((p,i)=>{
+    let profit=0; for(const s of skuMaster){const u=(+supply[s.code]||0)-(+cost[s.code]||0);profit+=u*(skuWeeks[s.code]?.[i]?.sales||0);}
+    return {label:p.label,profit:Math.round(profit)};
+  });
+
+  const masterCodeSet = new Set(skuMaster.map(s=>s.code));
+  const unknownCodes = [];
+  for(const code of Object.keys(skuWeeks)){
+    if(!masterCodeSet.has(code)){
+      const totalSales = skuWeeks[code].reduce((sum,w)=>sum+(w.sales||0),0);
+      if(totalSales>0) unknownCodes.push({code, totalSales});
+    }
+  }
+  const missingBoth = rows.filter(r=>r.c<=0 && r.sp<=0 && r.wkSales>0);
+  const missingCostOnly = rows.filter(r=>r.c<=0 && r.sp>0 && r.wkSales>0);
+  const missingSupplyOnly = rows.filter(r=>r.c>0 && r.sp<=0 && r.wkSales>0);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
+        <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#6366f1" label="本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
+        <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#0d9488" label="综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
+      </div>
+
+      {(unknownCodes.length>0 || missingBoth.length>0 || missingCostOnly.length>0 || missingSupplyOnly.length>0) && (
+        <div className="space-y-3">
+          {unknownCodes.length>0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0"/>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">⚠️ 发现 {unknownCodes.length} 个未维护 SKU（有动销但不在商品主数据中）</p>
+                  <p className="text-xs text-amber-600 mt-1">{unknownCodes.map(u=>u.code).join('、')}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {(missingBoth.length>0 || missingCostOnly.length>0 || missingSupplyOnly.length>0) && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0"/>
+                <div>
+                  <p className="text-sm font-semibold text-red-800">
+                    {missingBoth.length>0 && `缺成本+供货价：${missingBoth.length} 个；`}
+                    {missingCostOnly.length>0 && `仅缺成本：${missingCostOnly.length} 个；`}
+                    {missingSupplyOnly.length>0 && `仅缺供货价：${missingSupplyOnly.length} 个`}
+                  </p>
+                  <p className="text-xs text-red-600 mt-1">
+                    {rows.filter(r=>(r.c<=0||r.sp<=0)&&r.wkSales>0).map(r=>`${r.name}(${r.code})`).slice(0,10).join('、')}
+                    {rows.filter(r=>(r.c<=0||r.sp<=0)&&r.wkSales>0).length>10 ? ' 等' : ''}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Card title="周度毛利趋势" subtitle="(供货价−成本) × 周销量 求和">
+        <div className="h-56 w-full">
+          <ResponsiveContainer>
+            <AreaChart data={trend}>
+              <defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#16a34a" stopOpacity={0.35}/><stop offset="100%" stopColor="#16a34a" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
+              <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
+              <Area dataKey="profit" stroke="#16a34a" strokeWidth={2} fill="url(#gP)"/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {(() => {
+        const pSku = skuMaster.find(s=>s.code===profitSkuCode);
+        const pSeries = pSku ? PERIODS.map((p,i)=>{
+          const s = pSku;
+          const u = (+supply[s.code]||0)-(+cost[s.code]||0);
+          const profit = u * (skuWeeks[s.code]?.[i]?.sales || 0);
+          return {label: p.label, profit: Math.round(profit), unit: u};
+        }) : [];
+        return pSku ? (
+          <Card title={`${pSku.name} 单品毛利趋势`} subtitle={`商品编码 ${pSku.code} · 单件毛利 ¥${pSeries[pSeries.length-1]?.unit?.toFixed(2) || '-'}`}>
+            <div className="h-56 w-full">
+              <ResponsiveContainer>
+                <AreaChart data={pSeries}>
+                  <defs><linearGradient id="gP2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6366f1" stopOpacity={0.35}/><stop offset="100%" stopColor="#6366f1" stopOpacity={0}/></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                  <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                  <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
+                  <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
+                  <Area dataKey="profit" stroke="#6366f1" strokeWidth={2} fill="url(#gP2)"/>
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        ) : null;
+      })()}
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><EyeOff className="w-4 h-4 text-slate-400"/><h3 className="font-semibold">成本 / 供货价录入{isReadOnly?'（只读）':'（可编辑）'}</h3></div>
+          <div className="flex items-center gap-2">
+            {profitSkuCode && <span className="text-xs text-slate-500">当前选中: {skuMaster.find(s=>s.code===profitSkuCode)?.name}</span>}
+            {!isReadOnly && (
+              <button onClick={()=>setShowUpload(true)}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+                <Upload className="w-4 h-4"/>批量上传
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr className="text-slate-500">
+                <th className="px-3 py-2 text-left font-medium">商品</th>
+                <th className="px-3 py-2 text-right font-medium">成本</th>
+                <th className="px-3 py-2 text-right font-medium">供货价</th>
+                <th className="px-3 py-2 text-right font-medium">单件毛利</th>
+                <th className="px-3 py-2 text-right font-medium">毛利率</th>
+                <th className="px-3 py-2 text-right font-medium">本周销量</th>
+                <th className="px-3 py-2 text-right font-medium">本周毛利</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r=>{
+                const isSel = r.code===profitSkuCode;
+                return (
+                  <tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer transition-colors ${isSel?'bg-indigo-50 hover:bg-indigo-100':'hover:bg-slate-50'}`}>
+                    <td className="px-3 py-2"><div className="font-medium text-slate-700">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td>
+                    <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.c.toFixed(2)}</span> : <NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/>}</td>
+                    <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.sp.toFixed(2)}</span> : <NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/>}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:r.wkSales===0?'#94a3b8':'#1e293b'}}>{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="cost" onApply={applyUpload} skuMaster={skuMaster}/>
+    </div>
+  );
+}
+
+function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuMaster,isReadOnly}){
+  const [showUpload,setShowUpload]=useState(false);
+  const applyUpload = rows=> setCtrl(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.cp;});return n;});
+
+  const last = PERIODS.length-1;
+  /* FIX：skuMetrics[s.code][last] 加可选链，避免崩溃 */
+  const rows = skuMaster.map(s=>{
+    const cp=+ctrl[s.code]||0;
+    const actual=skuMetrics[s.code]?.[last]?.avgPrice || 0;
+    const endInv = skuWeeks[s.code] && skuWeeks[s.code][last] ? (skuWeeks[s.code][last].end || 0) : 0;
+    const diff=actual-cp, dpct=cp>0?diff/cp*100:0;
+    const status = endInv===0?'无库存':actual===0?'无销量':diff< -0.5?'破价':diff<cp*0.03?'临界':'正常';
+    return {...s, cp, actual, diff, dpct, status, endInv};
+  });
+  const breaks = rows.filter(r=>r.status==='破价').length;
+  const warns = rows.filter(r=>r.status==='临界').length;
+  const zero = rows.filter(r=>r.status==='无库存'||r.status==='无销量').length;
+  const sku = skuMaster.find(s=>s.code===skuCode);
+  const series = (skuMetrics[skuCode]||[]).map(w=>({period:w.period, actual:+(w.avgPrice||0).toFixed(2), ctrl:+ctrl[skuCode]||0}));
+  const stColor = {'破价':'#dc2626','临界':'#ea580c','正常':'#16a34a','无销量':'#94a3b8','无库存':'#cbd5e1'};
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Kpi icon={<ShieldAlert className="w-5 h-5"/>} tint="#dc2626" label="破价 SKU" value={breaks+' 个'}/>
+        <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#ea580c" label="临界预警" value={warns+' 个'}/>
+        <Kpi icon={<Tag className="w-5 h-5"/>} tint="#16a34a" label="正常" value={(rows.length-breaks-warns-zero)+' 个'}/>
+      </div>
+
+      <Card title="实际单价 vs 公域控价" subtitle={`${sku?.name || '—'} — 蓝=分销商倒算单价 ｜ 红虚=公域控价线`}>
+        <div className="flex items-center gap-2 mb-2">
+          <select value={skuCode} onChange={e=>setSkuCode(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
+            {skuMaster.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="h-64 w-full">
+          <ResponsiveContainer>
+            <LineChart data={series} margin={{top:5,right:10,left:0,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+              <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} domain={['auto','auto']}/>
+              <Tooltip formatter={v=>'¥'+v.toFixed(2)}/>
+              <Legend/>
+              <Line name="实际倒算单价" dataKey="actual" stroke="#2563eb" strokeWidth={2} dot={{r:2}}/>
+              <Line name="公域控价" dataKey="ctrl" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 4" dot={false}/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><EyeOff className="w-4 h-4 text-slate-400"/><h3 className="font-semibold">公域控价录入与破价监控{isReadOnly?'（只读）':'（可编辑）'}</h3></div>
+          {!isReadOnly && (
+            <button onClick={()=>setShowUpload(true)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+              <Upload className="w-4 h-4"/>批量上传
+            </button>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr className="text-slate-500">
+                <th className="px-3 py-2 text-left font-medium">商品</th>
+                <th className="px-3 py-2 text-right font-medium">公域控价</th>
+                <th className="px-3 py-2 text-right font-medium">本周实际单价</th>
+                <th className="px-3 py-2 text-right font-medium">差额</th>
+                <th className="px-3 py-2 text-right font-medium">偏离</th>
+                <th className="px-3 py-2 text-left font-medium">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r=>(
+                <tr key={r.code} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="px-3 py-2"><div className="font-medium text-slate-700">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td>
+                  <td className="px-3 py-2 text-right">{isReadOnly ? <span className="tabular-nums">¥{r.cp.toFixed(2)}</span> : <NumInput value={r.cp} onChange={v=>setCtrl(p=>({...p,[r.code]:v}))}/>}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">¥{r.actual.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.diff>=0?'+':'')+r.diff.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.dpct>=0?'+':'')+r.dpct.toFixed(2)+'%'}</td>
+                  <td className="px-3 py-2">
+                    <span onClick={()=>setSkuCode(r.code)} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer" style={{background:stColor[r.status]+'1a',color:stColor[r.status]}}>
+                      {r.status==='破价'&&<ShieldAlert className="w-3 h-3"/>}{r.status}{r.status==='无销量'&&<span className="ml-1 opacity-70">(库存{fmtNum(r.endInv)})</span>}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="price" onApply={applyUpload} skuMaster={skuMaster}/>
+    </div>
+  );
+}
+
+function LockGate({onUnlock,passcode,title,desc}){
+  const [val,setVal]=useState(''); const [err,setErr]=useState(false);
+  const submit=()=>{ if(val===passcode){onUnlock(true);} else {setErr(true);} };
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 sm:p-12 flex flex-col items-center text-center">
+      <div className="p-3 rounded-full bg-indigo-50 mb-4"><Lock className="w-7 h-7 text-indigo-600"/></div>
+      <h3 className="text-lg font-bold">{title}</h3>
+      <p className="text-sm text-slate-500 mt-1 mb-5 max-w-sm">{desc}</p>
+      <div className="flex items-center gap-2">
+        <input type="password" value={val} onChange={e=>{setVal(e.target.value);setErr(false);}}
+          onKeyDown={e=>e.key==='Enter'&&submit()} placeholder="输入访问密码"
+          className={`border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${err?'border-red-400 focus:ring-red-300':'border-slate-200 focus:ring-indigo-400'}`}/>
+        <button onClick={submit} className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-1">
+          <Unlock className="w-4 h-4"/>解锁
+        </button>
+      </div>
+      {err && <p className="text-xs text-red-500 mt-2">密码错误，请重试</p>}
+    </div>
+  );
+}
+
+function Card({title,subtitle,children}){
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <h3 className="font-semibold">{title}</h3>
+      {subtitle && <p className="text-xs text-slate-400 mt-0.5 mb-2">{subtitle}</p>}
+      {children}
+    </div>
+  );
+}
+function Kpi({icon,tint,label,value,chg,sub}){
+  const up=chg>=0;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-slate-500">{label}</span>
+        <span className="p-1.5 rounded-lg" style={{background:tint+'1a',color:tint}}>{icon}</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
+      {chg!==undefined && (
+        <div className={`mt-1 text-xs flex items-center gap-1 ${up?'text-green-600':'text-red-500'}`}>
+          {up?<TrendingUp className="w-3.5 h-3.5"/>:<TrendingDown className="w-3.5 h-3.5"/>}{pct(chg)}<span className="text-slate-400">环比</span>
+        </div>
+      )}
+      {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+    </div>
+  );
+}
+function NumInput({value,onChange}){
+  return (
+    <input type="number" step="0.01" value={value} onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))}
+      className="w-24 text-right border border-slate-200 rounded-md px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+  );
+}
+
+function PasswordSetting({current,onSave,onClose}){
+  const [val,setVal]=useState(''); const [confirm,setConfirm]=useState(''); const [err,setErr]=useState('');
+  const submit=()=>{
+    if(!val){setErr('请输入新密码');return;}
+    if(val!==confirm){setErr('两次输入不一致');return;}
+    onSave(val); onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2"><Settings className="w-5 h-5 text-indigo-600"/>设置访问密码</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm text-slate-600">新密码</label>
+            <input type="password" value={val} onChange={e=>{setVal(e.target.value);setErr('');}}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-slate-600">确认密码</label>
+            <input type="password" value={confirm} onChange={e=>{setConfirm(e.target.value);setErr('');}}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">取消</button>
+            <button onClick={submit} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GistSyncModal({data,onLoad,onClose}){
+  const [token,setToken] = useState('');
+  const [gistId,setGistId] = useState(()=>{
+    const saved = localStorage.getItem('zhaofeng_gist_id');
+    return saved || DEFAULT_GIST_ID;
+  });
+  const [status,setStatus] = useState('');
+  const [loading,setLoading] = useState(false);
+
+  useEffect(()=>{
+    if(window.location.protocol!=='file:'){
+      const saved = localStorage.getItem('zhaofeng_gist_id');
+      if(saved) setGistId(saved);
+    }
+  },[]);
+
+  const showMsg = (msg)=>{ setStatus(msg); setTimeout(()=>setStatus(''),4000); };
+
+  const push = async ()=>{
+    if(!token){ showMsg('请输入 GitHub PAT Token'); return; }
+    setLoading(true);
+    try{
+      const body = {
+        description: '兆丰渠道周转数据',
+        public: false,
+        files: { 'data.json': { content: JSON.stringify(data, null, 2) } }
+      };
+      const url = gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
+      const method = gistId ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if(!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+      const newId = json.id;
+      if(newId){
+        setGistId(newId);
+        if(window.location.protocol!=='file:'){
+          localStorage.setItem('zhaofeng_gist_id', newId);
+        }
+      }
+      showMsg(gistId ? '✅ Gist 更新成功' : `✅ Gist 创建成功，ID: ${newId}`);
+    }catch(e){ showMsg('❌ 失败: '+e.message); }
+    finally{ setLoading(false); }
+  };
+
+  const pull = async ()=>{
+    if(!gistId){ showMsg('请输入 Gist ID'); return; }
+    setLoading(true);
+    try{
+      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+        headers: token ? { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' } : {}
+      });
+      const json = await res.json();
+      if(!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+      const content = json.files?.['data.json']?.content;
+      if(!content) throw new Error('Gist 中未找到 data.json');
+      const parsed = JSON.parse(content);
+      onLoad(parsed);
+      if(window.location.protocol!=='file:'){
+        localStorage.setItem('zhaofeng_gist_id', gistId);
+      }
+      showMsg('✅ 拉取成功，数据已更新');
+    }catch(e){ showMsg('❌ 失败: '+e.message); }
+    finally{ setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-600"/>Gist 同步</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+            <p className="font-semibold">首次使用流程：</p>
+            <ol className="list-decimal list-inside mt-1 space-y-0.5">
+              <li>GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)</li>
+              <li>生成 Token，勾选 <b>gist</b> 权限</li>
+              <li>输入 Token 点击「推送」→ 自动生成 secret Gist</li>
+              <li>记录 Gist ID，填入 HTML 中 <code>GIST_ID</code> 常量</li>
+            </ol>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-slate-600">GitHub PAT Token（仅推送时需要）</label>
+            <input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-slate-600">Gist ID</label>
+            <input type="text" value={gistId} onChange={e=>setGistId(e.target.value)} placeholder="a1b2c3d4e5f6..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"/>
+          </div>
+          {status && <p className="text-xs px-3 py-2 rounded-lg bg-slate-50 text-slate-700">{status}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">关闭</button>
+            <button onClick={pull} disabled={loading} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">拉取</button>
+            <button onClick={push} disabled={loading} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">{loading?'推送中...':'推送'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = createRoot(document.getElementById('root'));
+root.render(<Dashboard/>);
+</script>
+</body>
+</html>
