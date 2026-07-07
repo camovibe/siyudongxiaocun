@@ -487,7 +487,13 @@ function Dashboard(){
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.location.protocol === 'file:') return;
+    if (window.location.protocol === 'file:') {
+      const cached = localStorage.getItem('zhaofeng_data');
+      if (cached) {
+        try { loadDataFromJson(JSON.parse(cached)); } catch(e) {}
+      }
+      return;
+    }
     const gistId = gistIdFromUrl || DEFAULT_GIST_ID || localStorage.getItem('zhaofeng_gist_id') || '';
     if (gistId) {
       tryLoadGist(gistId);
@@ -503,6 +509,16 @@ function Dashboard(){
         .catch(() => {});
     }
   }, [gistIdFromUrl]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.protocol !== 'file:') return;
+    const data = {
+      skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl,
+      PERIODS, version: 'v2', exportedAt: Date.now()
+    };
+    localStorage.setItem('zhaofeng_data', JSON.stringify(data));
+  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl]);
 
   const regenerateAll = (newMaster) => {
     const oldCodes = new Set(skuMaster.map(s=>s.code));
