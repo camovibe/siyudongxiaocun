@@ -513,6 +513,7 @@ function Dashboard(){
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (window.location.protocol !== 'file:') return;
+    if (!hasRealData) return; // 只在有真实数据时才保存，避免初始演示数据覆盖缓存
     const data = {
       skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl,
       PERIODS, version: 'v2', exportedAt: Date.now()
