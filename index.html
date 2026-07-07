@@ -653,11 +653,17 @@ function Dashboard(){
   const delta = (k)=> (prev && prev[k]) ? ((cur[k]-prev[k])/prev[k])*100 : 0;
 
   const lastIdx = PERIODS.length - 1;
+  const prevIdx = lastIdx > 0 ? lastIdx - 1 : 0;
   const totalWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[lastIdx]?.gmv || 0), 0);
   const totalCumGmv = skuMaster.reduce((sum, s) => {
     const arr = skuWeeks[s.code] || [];
     return sum + arr.reduce((a, w) => a + (w.gmv || 0), 0);
   }, 0);
+  const totalWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[lastIdx]?.sales || 0), 0);
+  const prevWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[prevIdx]?.gmv || 0), 0);
+  const prevWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[prevIdx]?.sales || 0), 0);
+  const gmvChg = prevWeekGmv > 0 ? ((totalWeekGmv - prevWeekGmv) / prevWeekGmv) * 100 : 0;
+  const salesChg = prevWeekSales > 0 ? ((totalWeekSales - prevWeekSales) / prevWeekSales) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-800">
@@ -719,7 +725,8 @@ function Dashboard(){
         {tab==='sku' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)}/>
+              <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
+              <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
               <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
             </div>
             <SkuOverviewTable skuMaster={sortedSkuMaster} skuMetrics={skuMetrics} onSelectSku={code=>setSkuCode(code)} />
@@ -1686,6 +1693,11 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const arr = skuWeeks[s.code] || [];
     return sum + arr.reduce((a, w) => a + (w.gmv || 0), 0);
   }, 0);
+  const totalWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.sales || 0), 0);
+  const prevWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last > 0 ? last - 1 : 0]?.gmv || 0), 0);
+  const prevWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last > 0 ? last - 1 : 0]?.sales || 0), 0);
+  const gmvChg = prevWeekGmv > 0 ? ((totalWeekGmv - prevWeekGmv) / prevWeekGmv) * 100 : 0;
+  const salesChg = prevWeekSales > 0 ? ((totalWeekSales - prevWeekSales) / prevWeekSales) * 100 : 0;
   const trend = PERIODS.map((p,i)=>{
     let profit=0; for(const s of skuMaster){const u=(+supply[s.code]||0)-(+cost[s.code]||0);profit+=u*(skuWeeks[s.code]?.[i]?.sales||0);}
     return {label:p.label,profit:Math.round(profit)};
@@ -1706,7 +1718,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)}/>
+        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
+        <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#6366f1" label="本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
