@@ -367,6 +367,7 @@ function Dashboard(){
   const [showUploadChannel,setShowUploadChannel] = useState(false);
 
   const [showGistSync,setShowGistSync] = useState(false);
+  const [showTotalTrend,setShowTotalTrend] = useState(null); // null | 'gmv' | 'sales'
 
   /* 按品类 + sortOrder/Code 排序，展示更规整 */
   const sortedSkuMaster = useMemo(() => {
@@ -665,6 +666,17 @@ function Dashboard(){
   const gmvChg = prevWeekGmv > 0 ? ((totalWeekGmv - prevWeekGmv) / prevWeekGmv) * 100 : 0;
   const salesChg = prevWeekSales > 0 ? ((totalWeekSales - prevWeekSales) / prevWeekSales) * 100 : 0;
 
+  const totalTrendData = useMemo(() => {
+    return PERIODS.map((p, i) => {
+      let gmv = 0, sales = 0;
+      skuMaster.forEach(s => {
+        gmv += skuWeeks[s.code]?.[i]?.gmv || 0;
+        sales += skuWeeks[s.code]?.[i]?.sales || 0;
+      });
+      return { period: p.label, gmv, sales };
+    });
+  }, [skuWeeks, skuMaster]);
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-800">
       <div className="max-w-7xl mx-auto space-y-5">
@@ -725,8 +737,8 @@ function Dashboard(){
         {tab==='sku' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
-              <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
+              <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`} onClick={()=>setShowTotalTrend('gmv')}/>
+              <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`} onClick={()=>setShowTotalTrend('sales')}/>
               <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
             </div>
             <SkuOverviewTable skuMaster={sortedSkuMaster} skuMetrics={skuMetrics} onSelectSku={code=>setSkuCode(code)} />
@@ -864,8 +876,48 @@ function Dashboard(){
         {showPassSetting && <PasswordSetting current={passcode} onSave={setPasscode} onClose={()=>setShowPassSetting(false)}/>}
         {showSkuManager && <SkuManager skuMaster={sortedSkuMaster} onSave={regenerateAll} onClose={()=>setShowSkuManager(false)}/>}
         {showGistSync && <GistSyncModal data={{skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl, PERIODS, version:'v2', exportedAt:Date.now()}} onLoad={loadDataFromJson} onClose={()=>setShowGistSync(false)}/>}
+        {showTotalTrend && <TotalTrendModal data={totalTrendData} mode={showTotalTrend} onClose={()=>setShowTotalTrend(null)}/>}
         <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} skuMaster={skuMaster}/>
         <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} skuMaster={skuMaster}/>
+      </div>
+    </div>
+  );
+}
+
+function TotalTrendModal({data,mode,onClose}){
+  const isGmv = mode === 'gmv';
+  const color = isGmv ? '#6366f1' : '#06b6d4';
+  const label = isGmv ? '总体GMV趋势' : '总体件数趋势';
+  const fmt = isGmv ? v => '¥'+fmtMoney(v) : v => fmtNum(v)+' 件';
+  const dataKey = isGmv ? 'gmv' : 'sales';
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-indigo-600"/>{label}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-5">
+          <div className="h-80 w-full">
+            <ResponsiveContainer>
+              <AreaChart data={data} margin={{top:5,right:10,left:0,bottom:0}}>
+                <defs>
+                  <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity={0.35}/>
+                    <stop offset="100%" stopColor={color} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={fmt}/>
+                <Tooltip formatter={v => fmt(v)}/>
+                <Area dataKey={dataKey} stroke={color} strokeWidth={2} fill="url(#gTotal)"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1979,7 +2031,24 @@ function Card({title,subtitle,children}){
     </div>
   );
 }
-function Kpi({icon,tint,label,value,chg,sub}){
+function Kpi({icon,tint,label,value,chg,sub,onClick}){
+  const up=chg>=0;
+  return (
+    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm p-4 ${onClick?'cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all':''}`} onClick={onClick}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-slate-500">{label}</span>
+        <span className="p-1.5 rounded-lg" style={{background:tint+'1a',color:tint}}>{icon}</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
+      {chg!==undefined && (
+        <div className={`mt-1 text-xs flex items-center gap-1 ${up?'text-green-600':'text-red-500'}`}>
+          {up?<TrendingUp className="w-3.5 h-3.5"/>:<TrendingDown className="w-3.5 h-3.5"/>}{pct(chg)}<span className="text-slate-400">环比</span>
+        </div>
+      )}
+      {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+    </div>
+  );
+}
   const up=chg>=0;
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
