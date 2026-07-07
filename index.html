@@ -652,6 +652,13 @@ function Dashboard(){
   const prev = (safeSeries && safeSeries.length > 1) ? safeSeries[safeSeries.length-2] : null;
   const delta = (k)=> (prev && prev[k]) ? ((cur[k]-prev[k])/prev[k])*100 : 0;
 
+  const lastIdx = PERIODS.length - 1;
+  const totalWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[lastIdx]?.gmv || 0), 0);
+  const totalCumGmv = skuMaster.reduce((sum, s) => {
+    const arr = skuWeeks[s.code] || [];
+    return sum + arr.reduce((a, w) => a + (w.gmv || 0), 0);
+  }, 0);
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-800">
       <div className="max-w-7xl mx-auto space-y-5">
@@ -711,6 +718,10 @@ function Dashboard(){
 
         {tab==='sku' && (
           <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)}/>
+              <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
+            </div>
             <SkuOverviewTable skuMaster={sortedSkuMaster} skuMetrics={skuMetrics} onSelectSku={code=>setSkuCode(code)} />
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
               <span className="text-sm text-slate-500">选择 SKU</span>
@@ -1670,6 +1681,11 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
   const avgMargin = totalRev>0?totalProfit/totalRev*100:0;
+  const totalWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.gmv || 0), 0);
+  const totalCumGmv = skuMaster.reduce((sum, s) => {
+    const arr = skuWeeks[s.code] || [];
+    return sum + arr.reduce((a, w) => a + (w.gmv || 0), 0);
+  }, 0);
   const trend = PERIODS.map((p,i)=>{
     let profit=0; for(const s of skuMaster){const u=(+supply[s.code]||0)-(+cost[s.code]||0);profit+=u*(skuWeeks[s.code]?.[i]?.sales||0);}
     return {label:p.label,profit:Math.round(profit)};
@@ -1689,7 +1705,9 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)}/>
+        <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#6366f1" label="本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
         <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#0d9488" label="综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
