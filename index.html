@@ -487,18 +487,28 @@ function Dashboard(){
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.location.protocol === 'file:') {
-      const cached = localStorage.getItem('zhaofeng_data');
-      if (cached) {
-        try { loadDataFromJson(JSON.parse(cached)); } catch(e) {}
-      }
-      return;
+    // 统一：先尝试加载本地缓存（秒开）
+    const cached = localStorage.getItem('zhaofeng_data');
+    if (cached) {
+      try { loadDataFromJson(JSON.parse(cached)); } catch(e) {}
     }
+    if (window.location.protocol === 'file:') {
+      return; // 本地模式：只加载缓存，不联网
+    }
+    // 在线模式：先显示缓存，后台静默刷新 Gist
     const gistId = gistIdFromUrl || DEFAULT_GIST_ID || localStorage.getItem('zhaofeng_gist_id') || '';
     if (gistId) {
-      tryLoadGist(gistId);
+      fetch(`https://gist.githubusercontent.com/raw/${gistId}/data.json?t=${Date.now()}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(gistData => {
+          if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+            loadDataFromJson(gistData);
+            localStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
+          }
+        })
+        .catch(() => {});
     } else {
-      // 兜底：尝试同目录 data.json（本地调试或首次部署场景）
+      // 兜底：尝试同目录 data.json（首次部署无 Gist ID 场景）
       fetch('./data.json')
         .then(res => res.ok ? res.json() : null)
         .then(data => {
@@ -512,7 +522,6 @@ function Dashboard(){
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (window.location.protocol !== 'file:') return;
     if (!hasRealData) return; // 只在有真实数据时才保存，避免初始演示数据覆盖缓存
     const data = {
       skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl,
