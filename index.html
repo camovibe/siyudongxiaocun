@@ -2049,23 +2049,6 @@ function Kpi({icon,tint,label,value,chg,sub,onClick}){
     </div>
   );
 }
-  const up=chg>=0;
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-500">{label}</span>
-        <span className="p-1.5 rounded-lg" style={{background:tint+'1a',color:tint}}>{icon}</span>
-      </div>
-      <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
-      {chg!==undefined && (
-        <div className={`mt-1 text-xs flex items-center gap-1 ${up?'text-green-600':'text-red-500'}`}>
-          {up?<TrendingUp className="w-3.5 h-3.5"/>:<TrendingDown className="w-3.5 h-3.5"/>}{pct(chg)}<span className="text-slate-400">环比</span>
-        </div>
-      )}
-      {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
-    </div>
-  );
-}
 function NumInput({value,onChange}){
   return (
     <input type="number" step="0.01" value={value} onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))}
