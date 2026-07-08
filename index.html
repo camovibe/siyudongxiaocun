@@ -405,9 +405,9 @@ function Dashboard(){
   };
 
   /* 统一的 JSON 数据加载逻辑（供文件导入和自动拉取共用） */
-  const loadDataFromJson = (data) => {
-    if(!data.skuMaster || !data.skuWeeks || !data.skuMetrics){
-      alert('文件格式不正确，缺少必要字段');
+  const loadDataFromJson = (data, { silent = false } = {}) => {
+    if(!data || !data.skuMaster || !data.skuWeeks || !data.skuMetrics){
+      if(!silent) alert('文件格式不正确，缺少必要字段');
       return false;
     }
     // 验证数据周数
@@ -450,7 +450,7 @@ function Dashboard(){
       setSkuCode(data.skuMaster[0]?.code || '');
     }
     setHasRealData(true);
-    alert('数据加载成功' + (weekCount < 13 ? `（仅 ${weekCount} 周）` : `（${weekCount} 周）`));
+    if(!silent) alert('数据加载成功' + (weekCount < 13 ? `（仅 ${weekCount} 周）` : `（${weekCount} 周）`));
     return true;
   };
 
@@ -487,37 +487,56 @@ function Dashboard(){
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // 统一：先尝试加载本地缓存（秒开）
+
+    // 1) 先用本地缓存秒开（有就先显示，避免白屏）
     const cached = localStorage.getItem('zhaofeng_data');
     if (cached) {
-      try { loadDataFromJson(JSON.parse(cached)); } catch(e) {}
+      try { loadDataFromJson(JSON.parse(cached), { silent: true }); } catch(e) {}
     }
-    if (window.location.protocol === 'file:') {
-      return; // 本地模式：只加载缓存，不联网
-    }
-    // 在线模式：先显示缓存，后台静默刷新 Gist
+
+    // 本地编辑模式：只用缓存，不联网
+    if (window.location.protocol === 'file:') return;
+
     const gistId = gistIdFromUrl || DEFAULT_GIST_ID || localStorage.getItem('zhaofeng_gist_id') || '';
-    if (gistId) {
-      fetch(`https://gist.githubusercontent.com/raw/${gistId}/data.json?t=${Date.now()}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(gistData => {
-          if (gistData && gistData.skuMaster && gistData.skuWeeks) {
-            loadDataFromJson(gistData);
-            localStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
-          }
-        })
-        .catch(() => {});
-    } else {
-      // 兜底：尝试同目录 data.json（首次部署无 Gist ID 场景）
-      fetch('./data.json')
+
+    // 没有 Gist ID 时兜底：同目录 data.json
+    if (!gistId) {
+      fetch('./data.json?t=' + Date.now())
         .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data && data.skuMaster && data.skuWeeks) {
-            loadDataFromJson(data);
+        .then(data => { if (data && data.skuMaster && data.skuWeeks) loadDataFromJson(data, { silent: true }); })
+        .catch(() => {});
+      return;
+    }
+
+    // 2) 通过 GitHub API 拉取最新数据（绕过 raw 的 ~60s CDN 缓存，且是规范端点）
+    const fetchLatest = () => {
+      fetch('https://api.github.com/gists/' + gistId, {
+        headers: { 'Accept': 'application/vnd.github.v3+json' },
+        cache: 'no-store'
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+          const file = json && json.files && json.files['data.json'];
+          if (!file || !file.content) return;
+          const gistData = JSON.parse(file.content);
+          if (gistData.skuMaster && gistData.skuWeeks) {
+            loadDataFromJson(gistData, { silent: true });
+            try { localStorage.setItem('zhaofeng_data', JSON.stringify(gistData)); } catch(e) {}
           }
         })
         .catch(() => {});
-    }
+    };
+
+    fetchLatest();
+
+    // 3) 切回标签页 / 窗口聚焦时自动刷新，接近实时且不触发限流
+    const onFocus = () => { if (document.visibilityState === 'visible') fetchLatest(); };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [gistIdFromUrl]);
 
   useEffect(() => {
