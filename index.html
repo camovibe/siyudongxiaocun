@@ -1768,20 +1768,28 @@ function ChannelView({channelWeekly,onUpload,isReadOnly}){
 }
 
 function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly}){
+function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly}){
   const [showUpload,setShowUpload]=useState(false);
   const [profitSkuCode,setProfitSkuCode]=useState(skuMaster[0]?.code||'');
+  const [opRate,setOpRate]=useState(12);
   const applyUpload = rows=>{
     setCost(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.c;});return n;});
     setSupply(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.sp;});return n;});
   };
 
   const last = PERIODS.length-1;
-  /* FIX：skuWeeks[s.code][last] 加可选链，避免某 SKU 无周数据时崩溃 */
   const rows = skuMaster.map(s=>{
     const c=+cost[s.code]||0, sp=+supply[s.code]||0;
     const unit=sp-c, margin=sp>0?unit/sp*100:0;
     const wkSales=skuWeeks[s.code]?.[last]?.sales || 0;
-    return {...s, c, sp, unit, margin, wkSales, wkProfit:unit*wkSales};
+    const wkGmv=skuWeeks[s.code]?.[last]?.gmv || 0;
+    const actualPrice = wkSales>0 ? wkGmv/wkSales : 0;
+    const dUnit = actualPrice - sp;
+    const dProfit = actualPrice>0 ? wkGmv - sp*wkSales : 0;
+    const dMargin = wkGmv>0 ? dProfit/wkGmv*100 : 0;
+    const breakEvenSupply = actualPrice*(1-opRate/100);
+    const supplyRoom = actualPrice>0 ? breakEvenSupply - sp : 0;
+    return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom};
   });
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
@@ -1796,8 +1804,18 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const prevWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last > 0 ? last - 1 : 0]?.sales || 0), 0);
   const gmvChg = prevWeekGmv > 0 ? ((totalWeekGmv - prevWeekGmv) / prevWeekGmv) * 100 : 0;
   const salesChg = prevWeekSales > 0 ? ((totalWeekSales - prevWeekSales) / prevWeekSales) * 100 : 0;
+
+  const totalDistProfit = rows.reduce((a,r)=>a+r.dProfit,0);
+  const distAvgMargin = totalWeekGmv>0 ? totalDistProfit/totalWeekGmv*100 : 0;
+  const validRoomRows = rows.filter(r=>r.wkSales>0 && r.actualPrice>0);
+  const avgSupplyRoom = validRoomRows.length>0 ? validRoomRows.reduce((a,r)=>a+r.supplyRoom,0)/validRoomRows.length : 0;
+
   const trend = PERIODS.map((p,i)=>{
     let profit=0; for(const s of skuMaster){const u=(+supply[s.code]||0)-(+cost[s.code]||0);profit+=u*(skuWeeks[s.code]?.[i]?.sales||0);}
+    return {label:p.label,profit:Math.round(profit)};
+  });
+  const distTrend = PERIODS.map((p,i)=>{
+    let profit=0; for(const s of skuMaster){const sp=+supply[s.code]||0; const g=skuWeeks[s.code]?.[i]?.gmv||0; const sl=skuWeeks[s.code]?.[i]?.sales||0; profit += g - sp*sl;}
     return {label:p.label,profit:Math.round(profit)};
   });
 
@@ -1813,15 +1831,20 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const missingCostOnly = rows.filter(r=>r.c<=0 && r.sp>0 && r.wkSales>0);
   const missingSupplyOnly = rows.filter(r=>r.c>0 && r.sp<=0 && r.wkSales>0);
 
+  const pSku = skuMaster.find(s=>s.code===profitSkuCode);
+  const pSeries = pSku ? PERIODS.map((p,i)=>{
+    const s = pSku;
+    const u = (+supply[s.code]||0)-(+cost[s.code]||0);
+    const profit = u * (skuWeeks[s.code]?.[i]?.sales || 0);
+    return {label: p.label, profit: Math.round(profit), unit: u};
+  }) : [];
+
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
         <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
-        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
-        <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#6366f1" label="本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
-        <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#0d9488" label="综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
       </div>
 
       {(unknownCodes.length>0 || missingBoth.length>0 || missingCostOnly.length>0 || missingSupplyOnly.length>0) && (
@@ -1858,31 +1881,35 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
         </div>
       )}
 
-      <Card title="周度毛利趋势" subtitle="(供货价−成本) × 周销量 求和">
-        <div className="h-56 w-full">
-          <ResponsiveContainer>
-            <AreaChart data={trend}>
-              <defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#16a34a" stopOpacity={0.35}/><stop offset="100%" stopColor="#16a34a" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
-              <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
-              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
-              <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
-              <Area dataKey="profit" stroke="#16a34a" strokeWidth={2} fill="url(#gP)"/>
-            </AreaChart>
-          </ResponsiveContainer>
+      <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 p-4 space-y-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-block w-1.5 h-5 rounded-full bg-emerald-500"/>
+          <h2 className="text-base font-bold text-emerald-800">我方（品牌方）利润</h2>
+          <span className="text-xs text-emerald-600">口径：供货价 − 成本</span>
         </div>
-      </Card>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="我方本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
+          <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#16a34a" label="我方本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
+          <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#16a34a" label="我方综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
+        </div>
 
-      {(() => {
-        const pSku = skuMaster.find(s=>s.code===profitSkuCode);
-        const pSeries = pSku ? PERIODS.map((p,i)=>{
-          const s = pSku;
-          const u = (+supply[s.code]||0)-(+cost[s.code]||0);
-          const profit = u * (skuWeeks[s.code]?.[i]?.sales || 0);
-          return {label: p.label, profit: Math.round(profit), unit: u};
-        }) : [];
-        return pSku ? (
-          <Card title={`${pSku.name} 单品毛利趋势`} subtitle={`商品编码 ${pSku.code} · 单件毛利 ¥${pSeries[pSeries.length-1]?.unit?.toFixed(2) || '-'}`}>
+        <Card title="我方周度毛利趋势" subtitle="(供货价−成本) × 周销量 求和">
+          <div className="h-56 w-full">
+            <ResponsiveContainer>
+              <AreaChart data={trend}>
+                <defs><linearGradient id="gP" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#16a34a" stopOpacity={0.35}/><stop offset="100%" stopColor="#16a34a" stopOpacity={0}/></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
+                <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
+                <Area dataKey="profit" stroke="#16a34a" strokeWidth={2} fill="url(#gP)"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {pSku && (
+          <Card title={`${pSku.name} 我方单品毛利趋势`} subtitle={`商品编码 ${pSku.code} · 单件毛利 ¥${pSeries[pSeries.length-1]?.unit?.toFixed(2) || '-'}`}>
             <div className="h-56 w-full">
               <ResponsiveContainer>
                 <AreaChart data={pSeries}>
@@ -1896,52 +1923,130 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
               </ResponsiveContainer>
             </div>
           </Card>
-        ) : null;
-      })()}
+        )}
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2"><EyeOff className="w-4 h-4 text-slate-400"/><h3 className="font-semibold">成本 / 供货价录入{isReadOnly?'（只读）':'（可编辑）'}</h3></div>
-          <div className="flex items-center gap-2">
-            {profitSkuCode && <span className="text-xs text-slate-500">当前选中: {skuMaster.find(s=>s.code===profitSkuCode)?.name}</span>}
-            {!isReadOnly && (
-              <button onClick={()=>setShowUpload(true)}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
-                <Upload className="w-4 h-4"/>批量上传
-              </button>
-            )}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2"><EyeOff className="w-4 h-4 text-slate-400"/><h3 className="font-semibold">我方成本 / 供货价录入{isReadOnly?'（只读）':'（可编辑）'}</h3></div>
+            <div className="flex items-center gap-2">
+              {profitSkuCode && <span className="text-xs text-slate-500">当前选中: {skuMaster.find(s=>s.code===profitSkuCode)?.name}</span>}
+              {!isReadOnly && (
+                <button onClick={()=>setShowUpload(true)}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+                  <Upload className="w-4 h-4"/>批量上传
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr className="text-slate-500">
+                  <th className="px-3 py-2 text-left font-medium">商品</th>
+                  <th className="px-3 py-2 text-right font-medium">成本</th>
+                  <th className="px-3 py-2 text-right font-medium">供货价</th>
+                  <th className="px-3 py-2 text-right font-medium">单件毛利</th>
+                  <th className="px-3 py-2 text-right font-medium">毛利率</th>
+                  <th className="px-3 py-2 text-right font-medium">本周销量</th>
+                  <th className="px-3 py-2 text-right font-medium">本周毛利</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r=>{
+                  const isSel = r.code===profitSkuCode;
+                  return (
+                    <tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer transition-colors ${isSel?'bg-indigo-50 hover:bg-indigo-100':'hover:bg-slate-50'}`}>
+                      <td className="px-3 py-2"><div className="font-medium text-slate-700">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td>
+                      <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.c.toFixed(2)}</span> : <NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/>}</td>
+                      <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.sp.toFixed(2)}</span> : <NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/>}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:r.wkSales===0?'#94a3b8':'#1e293b'}}>{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr className="text-slate-500">
-                <th className="px-3 py-2 text-left font-medium">商品</th>
-                <th className="px-3 py-2 text-right font-medium">成本</th>
-                <th className="px-3 py-2 text-right font-medium">供货价</th>
-                <th className="px-3 py-2 text-right font-medium">单件毛利</th>
-                <th className="px-3 py-2 text-right font-medium">毛利率</th>
-                <th className="px-3 py-2 text-right font-medium">本周销量</th>
-                <th className="px-3 py-2 text-right font-medium">本周毛利</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r=>{
-                const isSel = r.code===profitSkuCode;
-                return (
-                  <tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer transition-colors ${isSel?'bg-indigo-50 hover:bg-indigo-100':'hover:bg-slate-50'}`}>
-                    <td className="px-3 py-2"><div className="font-medium text-slate-700">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td>
-                    <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.c.toFixed(2)}</span> : <NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/>}</td>
-                    <td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{r.sp.toFixed(2)}</span> : <NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/>}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:r.wkSales===0?'#94a3b8':'#1e293b'}}>{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      </div>
+
+      <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/40 p-4 space-y-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-block w-1.5 h-5 rounded-full bg-amber-500"/>
+          <h2 className="text-base font-bold text-amber-800">对方（分销商）利润与盈亏边界</h2>
+          <span className="text-xs text-amber-600">口径：实际倒算售价 − 我方供货价</span>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap rounded-lg bg-white border border-amber-200 px-3 py-2 text-sm">
+          <span className="text-slate-600">对方运营成本率（平台佣金/物流/推广占售价比）</span>
+          <input type="number" step="1" min="0" max="90" value={opRate} onChange={e=>setOpRate(e.target.value===''?0:Number(e.target.value))} className="w-20 text-right border border-slate-200 rounded-md px-2 py-1 tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400"/>
+          <span className="text-slate-500">%</span>
+          <span className="text-xs text-slate-400">保本供价 = 实际售价 ×（1 − 运营成本率）；供价上调空间为正表示我方仍有提价余地</span>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#ea580c" label="对方本周总毛利" value={'¥'+fmtMoney(totalDistProfit)}/>
+          <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#ea580c" label="对方综合毛利率" value={distAvgMargin.toFixed(2)+'%'} sub={`扣运营后净利率 ${(distAvgMargin-opRate).toFixed(2)}%`}/>
+          <Kpi icon={<TrendingUp className="w-5 h-5"/>} tint="#ea580c" label="平均供价上调空间" value={(avgSupplyRoom>=0?'+':'')+'¥'+avgSupplyRoom.toFixed(2)} sub="正=我方仍可提价"/>
+          <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#ea580c" label="对方本周GMV收入" value={'¥'+fmtMoney(totalWeekGmv)}/>
+        </div>
+
+        <Card title="对方周度毛利趋势" subtitle="(实际倒算售价−供货价) × 周销量 求和">
+          <div className="h-56 w-full">
+            <ResponsiveContainer>
+              <AreaChart data={distTrend}>
+                <defs><linearGradient id="gD" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ea580c" stopOpacity={0.35}/><stop offset="100%" stopColor="#ea580c" stopOpacity={0}/></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
+                <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
+                <Area dataKey="profit" stroke="#ea580c" strokeWidth={2} fill="url(#gD)"/>
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <Store className="w-4 h-4 text-amber-500"/><h3 className="font-semibold">对方各 SKU 利润与保本供价（只读，随运营成本率自动测算）</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-amber-50 border-b border-amber-100">
+                <tr className="text-amber-700">
+                  <th className="px-3 py-2 text-left font-medium">商品</th>
+                  <th className="px-3 py-2 text-right font-medium">供货价<br/>(对方进货)</th>
+                  <th className="px-3 py-2 text-right font-medium">实际售价<br/>(倒算)</th>
+                  <th className="px-3 py-2 text-right font-medium">对方单件毛利</th>
+                  <th className="px-3 py-2 text-right font-medium">对方毛利率</th>
+                  <th className="px-3 py-2 text-right font-medium">保本供价<br/>(含运营)</th>
+                  <th className="px-3 py-2 text-right font-medium">供价上调空间</th>
+                  <th className="px-3 py-2 text-right font-medium">本周销量</th>
+                  <th className="px-3 py-2 text-right font-medium">对方本周毛利</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r=>{
+                  const noSale = r.wkSales===0 || r.actualPrice===0;
+                  const marginColor = noSale?'#94a3b8':(r.dMargin<=0?'#dc2626':r.dMargin<opRate?'#ea580c':'#16a34a');
+                  const roomColor = noSale?'#94a3b8':(r.supplyRoom>0?'#16a34a':'#dc2626');
+                  return (
+                    <tr key={r.code} className="border-b border-slate-50 hover:bg-amber-50/50">
+                      <td className="px-3 py-2"><div className="font-medium text-slate-700">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td>
+                      <td className="px-3 py-2 text-right tabular-nums">¥{r.sp.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{noSale?'—':'¥'+r.actualPrice.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dUnit>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+r.dUnit.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:marginColor}}>{noSale?'未售卖':r.dMargin.toFixed(2)+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+r.breakEvenSupply.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:roomColor}}>{noSale?'—':(r.supplyRoom>=0?'+':'')+'¥'+r.supplyRoom.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':'#1e293b'}}>{noSale?'-':'¥'+fmtMoney(r.dProfit)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1949,6 +2054,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     </div>
   );
 }
+
 
 function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuMaster,isReadOnly}){
   const [showUpload,setShowUpload]=useState(false);
