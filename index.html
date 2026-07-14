@@ -48,7 +48,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  LineChart, Line, ComposedChart, Bar, Area, AreaChart, LabelList,
+  LineChart, Line, ComposedChart, Bar, Area, AreaChart, LabelList, ReferenceArea,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
@@ -550,52 +550,26 @@ function Dashboard(){
   }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, cost, supply, ctrl]);
 
   const regenerateAll = (newMaster) => {
-    const oldCodes = new Set(skuMaster.map(s=>s.code));
-    const newCodes = new Set(newMaster.map(s=>s.code));
-    const sameSkus = oldCodes.size === newCodes.size && [...oldCodes].every(c => newCodes.has(c));
-    
-    if (sameSkus) {
-      // 只是顺序变化，保留现有周数据、渠道数据、成本/供货价/控价
-      setSkuMaster(newMaster);
-      setSkuMetrics(genSkuMetrics(newMaster, skuWeeks));
-      setCost(prev => {
-        const n = {};
-        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.3); });
-        return n;
-      });
-      setSupply(prev => {
-        const n = {};
-        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.55); });
-        return n;
-      });
-      setCtrl(prev => {
-        const n = {};
-        newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price*0.92); });
-        return n;
-      });
-      if(!newMaster.find(s=>s.code===skuCode)){
-        setSkuCode(newMaster[0]?.code||'');
-      }
-      setHasRealData(true);
-    } else {
-      // 有新增/删除 SKU，需要重新生成数据
-      const newWeeks = genSkuWeeks(newMaster);
-      const newMetrics = genSkuMetrics(newMaster, newWeeks);
-      const newChannel = genChannelWeekly(newMaster, newWeeks);
-      setSkuMaster(newMaster);
-      setSkuWeeks(newWeeks);
-      setSkuMetrics(newMetrics);
-      setChannelWeekly(newChannel);
-      setCost(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.3)])));
-      setSupply(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.55)])));
-      setCtrl(Object.fromEntries(newMaster.map(s=>[s.code,Math.round(s.price*0.92)])));
-      if(!newMaster.find(s=>s.code===skuCode)){
-        setSkuCode(newMaster[0]?.code||'');
-      }
-      setHasRealData(true);
-    }
-  };
+    // 关键修复：SKU 维护只调整"商品主数据"名单，绝不重新生成演示数据、绝不清空已上传的真实数据。
+    // - 已存在的 SKU：完整保留其周数据 / 成本 / 供货价 / 控价
+    // - 新增的 SKU：周数据置为空数组（等待单独上传其 CSV），成本/供货/控价给默认兜底值
+    // - 删除的 SKU：从各字典中移除
+    // - 渠道数据（channelWeekly）完全不动
+    const newWeeks = {};
+    newMaster.forEach(s => { newWeeks[s.code] = skuWeeks[s.code] || []; });
+    const newMetrics = genSkuMetrics(newMaster, newWeeks);
 
+    setSkuMaster(newMaster);
+    setSkuWeeks(newWeeks);
+    setSkuMetrics(newMetrics);
+    setCost(prev => { const n = {}; newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price * 0.3); }); return n; });
+    setSupply(prev => { const n = {}; newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price * 0.55); }); return n; });
+    setCtrl(prev => { const n = {}; newMaster.forEach(s => { n[s.code] = prev[s.code] ?? Math.round(s.price * 0.92); }); return n; });
+    if (!newMaster.find(s => s.code === skuCode)) {
+      setSkuCode(newMaster[0]?.code || '');
+    }
+    setHasRealData(true);
+  };
   const applySkuUpload = (rows, mode) => {
     try {
       if (!PERIODS || !Array.isArray(PERIODS)) {
@@ -1168,6 +1142,33 @@ function BatchUploadModal({open,onClose,mode,onApply,skuMaster}){
     URL.revokeObjectURL(url);
   };
 
+  const exportErrors = () => {
+    const errRows = parsed.filter(r => r.status === 'err');
+    if (errRows.length === 0) return;
+    const BOM = '\uFEFF';
+    let csv = '';
+    if (mode === 'sku') {
+      csv = '商品编码,周期,期初库存,入库数,销售数量,GMV,期末库存,错误原因\n';
+      errRows.forEach(r => { csv += `${r.code||''},${r.period||''},${r.begin||0},${r.inbound||0},${r.sales||0},${r.gmv||0},${r.end||0},${r.msg||''}\n`; });
+    } else if (mode === 'channel') {
+      csv = '周期,渠道,销售额,销售量,错误原因\n';
+      errRows.forEach(r => { csv += `${r.period||''},${r.channel||''},${r.gmv||0},${r.vol||0},${r.msg||''}\n`; });
+    } else if (mode === 'cost') {
+      csv = '商品编码,商品名称,成本,供货价,生效日期,错误原因\n';
+      errRows.forEach(r => { csv += `${r.code||''},${r.name||''},${r.c||0},${r.sp||0},${r.date||''},${r.msg||''}\n`; });
+    } else if (mode === 'price') {
+      csv = '商品编码,商品名称,公域控价,生效日期,错误原因\n';
+      errRows.forEach(r => { csv += `${r.code||''},${r.name||''},${r.cp||0},${r.date||''},${r.msg||''}\n`; });
+    }
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '错误清单_' + title + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-auto">
@@ -1210,7 +1211,7 @@ function BatchUploadModal({open,onClose,mode,onApply,skuMaster}){
                 <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-700"><FileSpreadsheet className="w-4 h-4"/>共读取 <b>{parsed.length}</b> 行</span>
                 <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700"><CheckCircle2 className="w-4 h-4"/>校验通过 <b>{okRows.length}</b> 行</span>
                 <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600"><AlertCircle className="w-4 h-4"/>异常 <b>{errCount}</b> 行</span>
-                {errCount>0 && <button className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"><Download className="w-3.5 h-3.5"/>导出错误清单</button>}
+                {errCount>0 && <button onClick={exportErrors} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"><Download className="w-3.5 h-3.5"/>导出错误清单</button>}
               </div>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-sm text-left">
@@ -1968,6 +1969,18 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
   const zero = rows.filter(r=>r.status==='无库存'||r.status==='无销量').length;
   const sku = skuMaster.find(s=>s.code===skuCode);
   const series = (skuMetrics[skuCode]||[]).map(w=>({period:w.period, actual:+(w.avgPrice||0).toFixed(2), ctrl:+ctrl[skuCode]||0}));
+  const ctrlValue = +ctrl[skuCode] || 0;
+  const renderActualDot = (props) => {
+    const { cx, cy, payload } = props;
+    if (cx == null || cy == null) return null;
+    const broken = payload.ctrl > 0 && payload.actual > 0 && payload.actual < payload.ctrl;
+    return <circle cx={cx} cy={cy} r={broken ? 4.5 : 2.5} fill={broken ? '#dc2626' : '#2563eb'} stroke="#fff" strokeWidth={1} />;
+  };
+  const stColor = {'破价':'#dc2626','临界':'#ea580c','正常':'#16a34a','无销量':'#94a3b8','无库存':'#cbd5e1'};
+  const warns = rows.filter(r=>r.status==='临界').length;
+  const zero = rows.filter(r=>r.status==='无库存'||r.status==='无销量').length;
+  const sku = skuMaster.find(s=>s.code===skuCode);
+  const series = (skuMetrics[skuCode]||[]).map(w=>({period:w.period, actual:+(w.avgPrice||0).toFixed(2), ctrl:+ctrl[skuCode]||0}));
   const stColor = {'破价':'#dc2626','临界':'#ea580c','正常':'#16a34a','无销量':'#94a3b8','无库存':'#cbd5e1'};
 
   return (
@@ -1978,7 +1991,7 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
         <Kpi icon={<Tag className="w-5 h-5"/>} tint="#16a34a" label="正常" value={(rows.length-breaks-warns-zero)+' 个'}/>
       </div>
 
-      <Card title="实际单价 vs 公域控价" subtitle={`${sku?.name || '—'} — 蓝=分销商倒算单价 ｜ 红虚=公域控价线`}>
+      <Card title="实际单价 vs 公域控价" subtitle={`${sku?.name || '—'} — 蓝=分销商倒算单价 ｜ 红虚线=公域控价，红线下方淡红区=破价区间，破价点标红`}>
         <div className="flex items-center gap-2 mb-2">
           <select value={skuCode} onChange={e=>setSkuCode(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
             {skuMaster.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}
@@ -1989,11 +2002,12 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
             <LineChart data={series} margin={{top:5,right:10,left:0,bottom:0}}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
               <XAxis dataKey="period" tick={{fontSize:12,fill:'#94a3b8'}}/>
-              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} domain={['auto','auto']}/>
-              <Tooltip formatter={v=>'¥'+v.toFixed(2)}/>
+              <YAxis tick={{fontSize:12,fill:'#94a3b8'}} domain={[0,'auto']}/>
+              <Tooltip formatter={v=>'¥'+Number(v).toFixed(2)}/>
               <Legend/>
-              <Line name="实际倒算单价" dataKey="actual" stroke="#2563eb" strokeWidth={2} dot={{r:2}}/>
-              <Line name="公域控价" dataKey="ctrl" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 4" dot={false}/>
+              {ctrlValue>0 && <ReferenceArea y1={0} y2={ctrlValue} fill="#dc2626" fillOpacity={0.07} ifOverflow="extendDomain"/>}
+              <Line name="实际倒算单价" dataKey="actual" stroke="#2563eb" strokeWidth={2} dot={renderActualDot}/>
+              <Line name="公域控价（红色区域内为破价）" dataKey="ctrl" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 4" dot={false}/>
             </LineChart>
           </ResponsiveContainer>
         </div>
