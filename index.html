@@ -1978,6 +1978,7 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
   };
   const stColor = {'破价':'#dc2626','临界':'#ea580c','正常':'#16a34a','无销量':'#94a3b8','无库存':'#cbd5e1'};
 
+  return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Kpi icon={<ShieldAlert className="w-5 h-5"/>} tint="#dc2626" label="破价 SKU" value={breaks+' 个'}/>
