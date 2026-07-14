@@ -48,7 +48,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  LineChart, Line, ComposedChart, Bar, Area, AreaChart, LabelList, ReferenceArea,
+  LineChart, Line, ComposedChart, Bar, Area, AreaChart, LabelList, ReferenceArea, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
@@ -1817,6 +1817,17 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     let profit=0; for(const s of skuMaster){const sp=+supply[s.code]||0; const g=skuWeeks[s.code]?.[i]?.gmv||0; const sl=skuWeeks[s.code]?.[i]?.sales||0; profit += g - sp*sl;}
     return {label:p.label,profit:Math.round(profit)};
   });
+  const distNetTrend = PERIODS.map((p,i)=>{
+    let gross=0, net=0;
+    for(const s of skuMaster){
+      const sp=+supply[s.code]||0;
+      const g=skuWeeks[s.code]?.[i]?.gmv||0;
+      const sl=skuWeeks[s.code]?.[i]?.sales||0;
+      gross += g - sp*sl;
+      net   += g*(1-opRate/100) - sp*sl;
+    }
+    return {label:p.label, gross:Math.round(gross), net:Math.round(net)};
+  });
 
   const masterCodeSet = new Set(skuMaster.map(s=>s.code));
   const unknownCodes = [];
@@ -2001,6 +2012,23 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                 <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
                 <Area dataKey="profit" stroke="#ea580c" strokeWidth={2} fill="url(#gD)"/>
               </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card title="对方周度净利趋势（扣运营成本）" subtitle={`橙=毛利 ｜ 绿/红=扣除运营成本率 ${opRate}% 后的净利，低于0虚线即为亏损 · 拖动上方运营成本率可实时观察净利变化`}>
+          <div className="h-64 w-full">
+            <ResponsiveContainer>
+              <ComposedChart data={distNetTrend} margin={{top:5,right:10,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                <XAxis dataKey="label" tick={{fontSize:12,fill:'#94a3b8'}}/>
+                <YAxis tick={{fontSize:12,fill:'#94a3b8'}} tickFormatter={v=>(v/10000).toFixed(0)+'万'}/>
+                <Tooltip formatter={v=>'¥'+fmtMoney(v)}/>
+                <Legend/>
+                <ReferenceLine y={0} stroke="#dc2626" strokeDasharray="4 4"/>
+                <Line name="对方毛利" dataKey="gross" stroke="#ea580c" strokeWidth={2} dot={false}/>
+                <Line name="对方净利(扣运营)" dataKey="net" stroke="#16a34a" strokeWidth={2} dot={{r:2}}/>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </Card>
