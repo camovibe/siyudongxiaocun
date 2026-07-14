@@ -1829,23 +1829,27 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     return {label:p.label, gross:Math.round(gross), net:Math.round(net)};
   });
   const distSummary = (()=>{
-    let wGross=0, wNet=0, cGross=0, cNet=0;
+    let wGmv=0,wCost=0,cGmv=0,cCost=0;
     for(const s of skuMaster){
       const sp=+supply[s.code]||0;
       const wg=skuWeeks[s.code]?.[last]?.gmv||0;
       const ws=skuWeeks[s.code]?.[last]?.sales||0;
-      wGross += wg - sp*ws;
-      wNet   += wg*(1-opRate/100) - sp*ws;
+      wGmv+=wg; wCost+=sp*ws;
       for(let i=0;i<PERIODS.length;i++){
         const g=skuWeeks[s.code]?.[i]?.gmv||0;
         const sl=skuWeeks[s.code]?.[i]?.sales||0;
-        cGross += g - sp*sl;
-        cNet   += g*(1-opRate/100) - sp*sl;
+        cGmv+=g; cCost+=sp*sl;
       }
     }
+    const wGross=wGmv-wCost, cGross=cGmv-cCost;
+    const wNet=wGmv*(1-opRate/100)-wCost, cNet=cGmv*(1-opRate/100)-cCost;
+    const pct=(n,d)=>d>0?(n/d*100):0;
     return {
-      wGross:Math.round(wGross), wNet:Math.round(wNet),
-      cGross:Math.round(cGross), cNet:Math.round(cNet)
+      wGross:Math.round(wGross), cGross:Math.round(cGross),
+      wNet:Math.round(wNet), cNet:Math.round(cNet),
+      wGrossR:pct(wGross,wGmv), cGrossR:pct(cGross,cGmv),
+      wNetR:pct(wNet,wGmv),     cNetR:pct(cNet,cGmv),
+      priceRoom: cCost>0 ? (cGmv*(1-opRate/100)/cCost - 1)*100 : 0
     };
   })();
 
@@ -2018,18 +2022,34 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
           <div className="rounded-xl bg-orange-50 border border-orange-100 p-4">
             <div className="text-xs text-orange-500 mb-1">对方本周毛利</div>
             <div className="text-xl font-bold text-orange-700">¥{fmtMoney(distSummary.wGross)}</div>
+            <div className="text-xs text-orange-400 mt-1">毛利率 {distSummary.wGrossR.toFixed(1)}%</div>
           </div>
           <div className="rounded-xl bg-orange-50 border border-orange-100 p-4">
             <div className="text-xs text-orange-500 mb-1">对方累计毛利</div>
             <div className="text-xl font-bold text-orange-700">¥{fmtMoney(distSummary.cGross)}</div>
+            <div className="text-xs text-orange-400 mt-1">毛利率 {distSummary.cGrossR.toFixed(1)}%</div>
           </div>
           <div className={`rounded-xl border p-4 ${distSummary.wNet<0?'bg-red-50 border-red-200':'bg-green-50 border-green-100'}`}>
             <div className={`text-xs mb-1 ${distSummary.wNet<0?'text-red-500':'text-green-600'}`}>对方本周净利（扣运营{opRate}%）</div>
             <div className={`text-xl font-bold ${distSummary.wNet<0?'text-red-600':'text-green-700'}`}>¥{fmtMoney(distSummary.wNet)}</div>
+            <div className={`text-xs mt-1 ${distSummary.wNet<0?'text-red-400':'text-green-500'}`}>净利率 {distSummary.wNetR.toFixed(1)}%</div>
           </div>
           <div className={`rounded-xl border p-4 ${distSummary.cNet<0?'bg-red-50 border-red-200':'bg-green-50 border-green-100'}`}>
             <div className={`text-xs mb-1 ${distSummary.cNet<0?'text-red-500':'text-green-600'}`}>对方累计净利（扣运营{opRate}%）</div>
             <div className={`text-xl font-bold ${distSummary.cNet<0?'text-red-600':'text-green-700'}`}>¥{fmtMoney(distSummary.cNet)}</div>
+            <div className={`text-xs mt-1 ${distSummary.cNet<0?'text-red-400':'text-green-500'}`}>净利率 {distSummary.cNetR.toFixed(1)}%</div>
+          </div>
+        </div>
+
+        <div className={`rounded-xl border p-4 mb-4 flex items-center justify-between ${distSummary.priceRoom<0?'bg-red-50 border-red-200':'bg-blue-50 border-blue-100'}`}>
+          <div>
+            <div className={`text-xs mb-1 ${distSummary.priceRoom<0?'text-red-500':'text-blue-500'}`}>可提价空间（累计口径 · 保对方净利≥0）</div>
+            <div className={`text-2xl font-bold ${distSummary.priceRoom<0?'text-red-600':'text-blue-700'}`}>
+              {distSummary.priceRoom>=0?'+':''}{distSummary.priceRoom.toFixed(1)}%
+            </div>
+          </div>
+          <div className={`text-xs max-w-xs text-right ${distSummary.priceRoom<0?'text-red-400':'text-blue-400'}`}>
+            在运营成本率 {opRate}% 下，供货价整体最多还能上调此比例，对方仍不亏本；为负说明当前已亏损，需降供价或压运营成本
           </div>
         </div>
 
