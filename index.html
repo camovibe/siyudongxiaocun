@@ -2105,6 +2105,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                   <th className="px-3 py-2 text-right font-medium">供价上调空间</th>
                   <th className="px-3 py-2 text-right font-medium">本周销量</th>
                   <th className="px-3 py-2 text-right font-medium">对方本周毛利</th>
+                  <th className="px-3 py-2 text-right font-medium">对方本周净利<br/>(扣运营{opRate}%)</th>
+                  <th className="px-3 py-2 text-right font-medium">对方本周净利率</th>
                 </tr>
               </thead>
               <tbody>
@@ -2126,6 +2128,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:roomColor}}>{noSale?'—':(r.supplyRoom>=0?'+':'')+'¥'+r.supplyRoom.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':'#1e293b'}}>{noSale?'-':'¥'+fmtMoney(r.dProfit)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.wkGmv*(1-opRate/100)-r.sp*r.wkSales>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.wkGmv>0?(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100>=0?'#16a34a':'#dc2626':'#94a3b8'}}>{noSale?'-':(r.wkGmv>0?((r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100).toFixed(2):'0.00')+'%'}</td>
                     </tr>
                   );
                 })}
