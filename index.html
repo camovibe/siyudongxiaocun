@@ -2098,7 +2098,10 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                   <th className="px-3 py-2 text-right font-medium">实际售价<br/>(倒算)</th>
                   <th className="px-3 py-2 text-right font-medium">对方单件毛利</th>
                   <th className="px-3 py-2 text-right font-medium">对方毛利率</th>
+                  <th className="px-3 py-2 text-right font-medium">对方单件净利<br/>(扣运营{opRate}%)</th>
+                  <th className="px-3 py-2 text-right font-medium">对方净利率</th>
                   <th className="px-3 py-2 text-right font-medium">保本供价<br/>(含运营)</th>
+                  <th className="px-3 py-2 text-right font-medium">对方保本底价<br/>(净利=0)</th>
                   <th className="px-3 py-2 text-right font-medium">供价上调空间</th>
                   <th className="px-3 py-2 text-right font-medium">本周销量</th>
                   <th className="px-3 py-2 text-right font-medium">对方本周毛利</th>
@@ -2116,7 +2119,10 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums">{noSale?'—':'¥'+r.actualPrice.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dUnit>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+r.dUnit.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums" style={{color:marginColor}}>{noSale?'未售卖':r.dMargin.toFixed(2)+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dUnit-r.sp*opRate/100>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+(r.dUnit-r.sp*opRate/100).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.dMargin-opRate>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':(r.dMargin-opRate).toFixed(2)+'%'}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+r.breakEvenSupply.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+(r.actualPrice*(1-opRate/100)).toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:roomColor}}>{noSale?'—':(r.supplyRoom>=0?'+':'')+'¥'+r.supplyRoom.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':'#1e293b'}}>{noSale?'-':'¥'+fmtMoney(r.dProfit)}</td>
