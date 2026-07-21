@@ -19,28 +19,6 @@
 }
 </script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script>
-(function(){
-  function compileFallback() {
-    if (typeof Babel === 'undefined' || typeof React !== 'undefined') return;
-    var scripts = document.querySelectorAll('script[type="text/babel"]');
-    scripts.forEach(function(s) {
-      try {
-        var result = Babel.transform(s.textContent, { presets: ['react'], sourceType: 'module' });
-        var ns = document.createElement('script');
-        ns.type = 'module';
-        ns.textContent = result.code;
-        document.body.appendChild(ns);
-      } catch(e) { console.error('Babel fallback compile error:', e); }
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(compileFallback, 500); });
-  } else {
-    setTimeout(compileFallback, 500);
-  }
-})();
-</script>
 </head>
 <body class="bg-slate-50 min-h-screen">
 <div id="root"></div>
