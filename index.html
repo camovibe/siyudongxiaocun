@@ -1771,6 +1771,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const [showUpload,setShowUpload]=useState(false);
   const [profitSkuCode,setProfitSkuCode]=useState(skuMaster[0]?.code||'');
   const [opRate,setOpRate]=useState(12);
+  const [sortKey,setSortKey]=useState(null);
+  const [sortDir,setSortDir]=useState('desc');
   const applyUpload = rows=>{
     setCost(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.c;});return n;});
     setSupply(p=>{const n={...p};rows.forEach(r=>{n[r.code]=r.sp;});return n;});
@@ -1792,8 +1794,21 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const cumSales = PERIODS.reduce((sum, p, i) => sum + (skuWeeks[s.code]?.[i]?.sales || 0), 0);
     const cumNet = cumGmv * (1 - opRate/100) - sp * cumSales;
     const cumNetR = cumGmv > 0 ? cumNet / cumGmv * 100 : 0;
-    return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom, cumNet, cumNetR};
+    const wkNet = wkGmv*(1-opRate/100) - sp*wkSales;
+    const wkNetR = wkGmv>0 ? wkNet/wkGmv*100 : 0;
+    const dNetUnit = actualPrice>0 ? dUnit - sp*opRate/100 : 0;
+    const dNetMargin = actualPrice>0 ? dMargin - opRate : 0;
+    const bePrice = actualPrice>0 ? actualPrice*(1-opRate/100) : 0;
+    return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom, cumNet, cumNetR, wkNet, wkNetR, dNetUnit, dNetMargin, bePrice};
   });
+  const displayRows = useMemo(()=>{
+    if(!sortKey) return rows;
+    return [...rows].sort((a,b)=>{
+      let av=a[sortKey]??-Infinity,bv=b[sortKey]??-Infinity;
+      if(av===bv) return 0;
+      return sortDir==='asc'?(av>bv?1:-1):(av>bv?-1:1);
+    });
+  },[rows,sortKey,sortDir]);
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
   const avgMargin = totalRev>0?totalProfit/totalRev*100:0;
@@ -1980,17 +1995,17 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr className="text-slate-500">
-                  <th className="px-3 py-2 text-left font-medium">商品</th>
+                  <th onClick={()=>{setSortKey(p=>p==="name"?null:"name");setSortDir(d=>d==="desc"?"asc":"desc")}} className="px-3 py-2 text-left font-medium cursor-pointer select-none">商品 {sortKey==="name"?(sortDir==="desc"?"↓":"↑"):""}</th>
                   <th className="px-3 py-2 text-right font-medium">成本</th>
                   <th className="px-3 py-2 text-right font-medium">供货价</th>
                   <th className="px-3 py-2 text-right font-medium">单件毛利</th>
                   <th className="px-3 py-2 text-right font-medium">毛利率</th>
-                  <th className="px-3 py-2 text-right font-medium">本周销量</th>
+                  <th onClick={()=>setSortKey(p=>p==="wkSales"?null:"wkSales");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">本周销量 {sortKey==="wkSales"?(sortDir==="desc"?"↓":"↑"):""}</th>
                   <th className="px-3 py-2 text-right font-medium">本周毛利</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r=>{
+                {displayRows.map(r=>{
                   const isSel = r.code===profitSkuCode;
                   return (
                     <tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer transition-colors ${isSel?'bg-indigo-50 hover:bg-indigo-100':'hover:bg-slate-50'}`}>
@@ -2098,25 +2113,25 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
               <thead className="bg-amber-50 border-b border-amber-100">
                 <tr className="text-amber-700">
                   <th className="px-3 py-2 text-left font-medium">商品</th>
-                  <th className="px-3 py-2 text-right font-medium">供货价<br/>(对方进货)</th>
-                  <th className="px-3 py-2 text-right font-medium">实际售价<br/>(倒算)</th>
-                  <th className="px-3 py-2 text-right font-medium">对方单件毛利</th>
-                  <th className="px-3 py-2 text-right font-medium">对方毛利率</th>
-                  <th className="px-3 py-2 text-right font-medium">对方单件净利<br/>(扣运营{opRate}%)</th>
-                  <th className="px-3 py-2 text-right font-medium">对方净利率</th>
-                  <th className="px-3 py-2 text-right font-medium">保本供价<br/>(含运营)</th>
-                  <th className="px-3 py-2 text-right font-medium">对方保本底价<br/>(净利=0)</th>
-                  <th className="px-3 py-2 text-right font-medium">供价上调空间</th>
-                  <th className="px-3 py-2 text-right font-medium">本周销量</th>
-                  <th className="px-3 py-2 text-right font-medium">对方本周毛利</th>
-                  <th className="px-3 py-2 text-right font-medium">对方本周净利<br/>(扣运营{opRate}%)</th>
-                  <th className="px-3 py-2 text-right font-medium">对方本周净利率</th>
-                  <th className="px-3 py-2 text-right font-medium">对方累积净利<br/>(扣运营{opRate}%)</th>
-                  <th className="px-3 py-2 text-right font-medium">对方累积净利率</th>
+                  <th onClick={()=>setSortKey(p=>p==="sp"?null:"sp");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">供货价<br/>(对方进货) {sortKey==="sp"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="actualPrice"?null:"actualPrice");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">实际售价<br/>(倒算) {sortKey==="actualPrice"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="dUnit"?null:"dUnit");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方单件毛利 {sortKey==="dUnit"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="dMargin"?null:"dMargin");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方毛利率 {sortKey==="dMargin"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="dNetUnit"?null:"dNetUnit");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方单件净利<br/>(扣运营{opRate}%) {sortKey==="dNetUnit"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="dNetMargin"?null:"dNetMargin");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方净利率 {sortKey==="dNetMargin"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="breakEvenSupply"?null:"breakEvenSupply");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">保本供价<br/>(含运营) {sortKey==="breakEvenSupply"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="bePrice"?null:"bePrice");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方保本底价<br/>(净利=0) {sortKey==="bePrice"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="supplyRoom"?null:"supplyRoom");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">供价上调空间 {sortKey==="supplyRoom"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>{setSortKey(p=>p==="wkSales"?null:"wkSales");setSortDir(d=>d==="desc"?"asc":"desc")}} className="px-3 py-2 text-right font-medium cursor-pointer select-none">本周销量 {sortKey==="wkSales"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="dProfit"?null:"dProfit");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方本周毛利 {sortKey==="dProfit"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="wkNet"?null:"wkNet");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方本周净利<br/>(扣运营{opRate}%) {sortKey==="wkNet"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="wkNetR"?null:"wkNetR");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方本周净利率 {sortKey==="wkNetR"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="cumNet"?null:"cumNet");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方累积净利<br/>(扣运营{opRate}%) {sortKey==="cumNet"?(sortDir==="desc"?"↓":"↑"):""}</th>
+                  <th onClick={()=>setSortKey(p=>p==="cumNetR"?null:"cumNetR");setSortDir(d=>d==="desc"?"asc":"desc")} className="px-3 py-2 text-right font-medium cursor-pointer select-none">对方累积净利率 {sortKey==="cumNetR"?(sortDir==="desc"?"↓":"↑"):""}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r=>{
+                {displayRows.map(r=>{
                   const noSale = r.wkSales===0 || r.actualPrice===0;
                   const marginColor = noSale?'#94a3b8':(r.dMargin<=0?'#dc2626':r.dMargin<opRate?'#ea580c':'#16a34a');
                   const roomColor = noSale?'#94a3b8':(r.supplyRoom>0?'#16a34a':'#dc2626');
@@ -2127,15 +2142,15 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums">{noSale?'—':'¥'+r.actualPrice.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dUnit>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+r.dUnit.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums" style={{color:marginColor}}>{noSale?'未售卖':r.dMargin.toFixed(2)+'%'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dUnit-r.sp*opRate/100>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+(r.dUnit-r.sp*opRate/100).toFixed(2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.dMargin-opRate>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':(r.dMargin-opRate).toFixed(2)+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:noSale?'#94a3b8':r.dNetUnit>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':'¥'+r.dNetUnit.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.dNetMargin>=0?'#16a34a':'#dc2626'}}>{noSale?'未售卖':r.dNetMargin.toFixed(2)+'%'}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+r.breakEvenSupply.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+(r.actualPrice*(1-opRate/100)).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">{noSale?'—':'¥'+r.bePrice.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium" style={{color:roomColor}}>{noSale?'—':(r.supplyRoom>=0?'+':'')+'¥'+r.supplyRoom.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtNum(r.wkSales)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':'#1e293b'}}>{noSale?'-':'¥'+fmtMoney(r.dProfit)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.wkGmv*(1-opRate/100)-r.sp*r.wkSales>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales))}</td>
-                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.wkGmv>0?(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100>=0?'#16a34a':'#dc2626':'#94a3b8'}}>{noSale?'-':(r.wkGmv>0?((r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100).toFixed(2):'0.00')+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.wkNet>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.wkNet))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.wkNetR>=0?'#16a34a':'#dc2626'}}>{noSale?'-':r.wkNetR.toFixed(2)+'%'}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.cumNet>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.cumNet))}</td>
                       <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.cumNetR>=0?'#16a34a':'#dc2626'}}>{noSale?'-':r.cumNetR.toFixed(2)+'%'}</td>
                     </tr>
