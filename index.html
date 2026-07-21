@@ -1788,7 +1788,11 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const dMargin = wkGmv>0 ? dProfit/wkGmv*100 : 0;
     const breakEvenSupply = actualPrice*(1-opRate/100);
     const supplyRoom = actualPrice>0 ? breakEvenSupply - sp : 0;
-    return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom};
+    const cumGmv = PERIODS.reduce((sum, p, i) => sum + (skuWeeks[s.code]?.[i]?.gmv || 0), 0);
+    const cumSales = PERIODS.reduce((sum, p, i) => sum + (skuWeeks[s.code]?.[i]?.sales || 0), 0);
+    const cumNet = cumGmv * (1 - opRate/100) - sp * cumSales;
+    const cumNetR = cumGmv > 0 ? cumNet / cumGmv * 100 : 0;
+    return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom, cumNet, cumNetR};
   });
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
@@ -2107,6 +2111,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                   <th className="px-3 py-2 text-right font-medium">对方本周毛利</th>
                   <th className="px-3 py-2 text-right font-medium">对方本周净利<br/>(扣运营{opRate}%)</th>
                   <th className="px-3 py-2 text-right font-medium">对方本周净利率</th>
+                  <th className="px-3 py-2 text-right font-medium">对方累积净利<br/>(扣运营{opRate}%)</th>
+                  <th className="px-3 py-2 text-right font-medium">对方累积净利率</th>
                 </tr>
               </thead>
               <tbody>
@@ -2130,6 +2136,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':'#1e293b'}}>{noSale?'-':'¥'+fmtMoney(r.dProfit)}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.wkGmv*(1-opRate/100)-r.sp*r.wkSales>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales))}</td>
                       <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.wkGmv>0?(r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100>=0?'#16a34a':'#dc2626':'#94a3b8'}}>{noSale?'-':(r.wkGmv>0?((r.wkGmv*(1-opRate/100)-r.sp*r.wkSales)/r.wkGmv*100).toFixed(2):'0.00')+'%'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:noSale?'#94a3b8':r.cumNet>=0?'#16a34a':'#dc2626'}}>{noSale?'-':'¥'+fmtMoney(Math.round(r.cumNet))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.cumNetR>=0?'#16a34a':'#dc2626'}}>{noSale?'-':r.cumNetR.toFixed(2)+'%'}</td>
                     </tr>
                   );
                 })}
