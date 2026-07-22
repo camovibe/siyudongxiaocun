@@ -1751,6 +1751,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const [opRate,setOpRate]=useState(12);
   const distTopRef = useRef(null);
   const distBotRef = useRef(null);
+  const distTopInnerRef = useRef(null);
   const distSyncing = useRef(false);
   const syncDistScroll = (src) => {
     if (distSyncing.current) return;
@@ -1764,6 +1765,16 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
       distSyncing.current = false;
     });
   };
+  useEffect(() => {
+    const setWidth = () => {
+      if (distBotRef.current && distTopInnerRef.current) {
+        distTopInnerRef.current.style.width = distBotRef.current.scrollWidth + 'px';
+      }
+    };
+    setWidth();
+    window.addEventListener('resize', setWidth);
+    return () => window.removeEventListener('resize', setWidth);
+  }, [displayRows]);
   const [sortKey,setSortKey]=useState(null);
   const [sortDir,setSortDir]=useState('desc');
   const cycleSort = (key) => {
@@ -1993,7 +2004,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
             </div>
           </div>
           <div ref={distTopRef} onScroll={()=>syncDistScroll('top')} className="overflow-x-auto" style={{height:'12px',scrollbarWidth:'thin',scrollbarColor:'#d4d4d8 transparent'}}>
-            <div style={{minWidth:'2200px',height:'1px'}}></div>
+            <div ref={distTopInnerRef} style={{height:'1px'}}></div>
           </div>
           <div ref={distBotRef} onScroll={()=>syncDistScroll('bot')} className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
             <table className="w-full text-sm">
@@ -2113,7 +2124,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
             <Store className="w-4 h-4 text-amber-500"/><h3 className="font-semibold">对方各 SKU 利润与保本供价（只读，随运营成本率自动测算）</h3>
           </div>
           <div ref={distTopRef} onScroll={()=>syncDistScroll('top')} className="overflow-x-auto" style={{height:'12px',scrollbarWidth:'thin',scrollbarColor:'#d4d4d8 transparent'}}>
-            <div style={{minWidth:'2200px',height:'1px'}}></div>
+            <div ref={distTopInnerRef} style={{height:'1px'}}></div>
           </div>
           <div ref={distBotRef} onScroll={()=>syncDistScroll('bot')} className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
             <table className="w-full text-sm">
