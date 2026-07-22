@@ -1749,6 +1749,21 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const [showUpload,setShowUpload]=useState(false);
   const [profitSkuCode,setProfitSkuCode]=useState(skuMaster[0]?.code||'');
   const [opRate,setOpRate]=useState(12);
+  const distTopRef = useRef(null);
+  const distBotRef = useRef(null);
+  const distSyncing = useRef(false);
+  const syncDistScroll = (src) => {
+    if (distSyncing.current) return;
+    distSyncing.current = true;
+    requestAnimationFrame(() => {
+      if (src === 'top' && distTopRef.current && distBotRef.current) {
+        distBotRef.current.scrollLeft = distTopRef.current.scrollLeft;
+      } else if (src === 'bot' && distTopRef.current && distBotRef.current) {
+        distTopRef.current.scrollLeft = distBotRef.current.scrollLeft;
+      }
+      distSyncing.current = false;
+    });
+  };
   const [sortKey,setSortKey]=useState(null);
   const [sortDir,setSortDir]=useState('desc');
   const cycleSort = (key) => {
@@ -1977,7 +1992,10 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
               )}
             </div>
           </div>
-          <div className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
+          <div ref={distTopRef} onScroll={()=>syncDistScroll('top')} className="overflow-x-auto" style={{height:'12px',scrollbarWidth:'thin',scrollbarColor:'#d4d4d8 transparent'}}>
+            <div style={{minWidth:'2200px',height:'1px'}}></div>
+          </div>
+          <div ref={distBotRef} onScroll={()=>syncDistScroll('bot')} className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr className="text-slate-500">
@@ -2094,7 +2112,10 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
           <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
             <Store className="w-4 h-4 text-amber-500"/><h3 className="font-semibold">对方各 SKU 利润与保本供价（只读，随运营成本率自动测算）</h3>
           </div>
-          <div className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
+          <div ref={distTopRef} onScroll={()=>syncDistScroll('top')} className="overflow-x-auto" style={{height:'12px',scrollbarWidth:'thin',scrollbarColor:'#d4d4d8 transparent'}}>
+            <div style={{minWidth:'2200px',height:'1px'}}></div>
+          </div>
+          <div ref={distBotRef} onScroll={()=>syncDistScroll('bot')} className="overflow-x-auto" style={{scrollbarWidth:"thin",scrollbarColor:"#d4d4d8 transparent"}}>
             <table className="w-full text-sm">
               <thead className="bg-amber-50 border-b border-amber-100">
                 <tr className="text-amber-700">
