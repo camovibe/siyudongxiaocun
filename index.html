@@ -1765,16 +1765,6 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
       distSyncing.current = false;
     });
   };
-  useEffect(() => {
-    const setWidth = () => {
-      if (distBotRef.current && distTopInnerRef.current) {
-        distTopInnerRef.current.style.width = distBotRef.current.scrollWidth + 'px';
-      }
-    };
-    setWidth();
-    window.addEventListener('resize', setWidth);
-    return () => window.removeEventListener('resize', setWidth);
-  }, [displayRows]);
   const [sortKey,setSortKey]=useState(null);
   const [sortDir,setSortDir]=useState('desc');
   const cycleSort = (key) => {
@@ -1821,6 +1811,16 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
       return sortDir==='asc'?(av>bv?1:-1):(av>bv?-1:1);
     });
   },[rows,sortKey,sortDir]);
+  useEffect(() => {
+    const setWidth = () => {
+      if (distBotRef.current && distTopInnerRef.current) {
+        distTopInnerRef.current.style.width = distBotRef.current.scrollWidth + 'px';
+      }
+    };
+    setWidth();
+    window.addEventListener('resize', setWidth);
+    return () => window.removeEventListener('resize', setWidth);
+  }, [displayRows]);
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
   const avgMargin = totalRev>0?totalProfit/totalRev*100:0;
