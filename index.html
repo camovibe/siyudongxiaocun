@@ -2066,24 +2066,9 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                   <th className="px-3 py-2 text-right font-medium">本周毛利</th>
                 </tr>
                 <tr className="bg-amber-50/50">
-                  <th className="px-2 py-1"><input id="flt_name" value={flt.name||''} onChange={e=>setFlt(p=>({...p,name:e.target.value}))} className="flt" placeholder="筛选商品"/></th>
-                  <th className="px-2 py-1"><input id="flt_endStock" value={flt.endStock||''} onChange={e=>setFlt(p=>({...p,endStock:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_stockSalesRatio" value={flt.stockSalesRatio||''} onChange={e=>setFlt(p=>({...p,stockSalesRatio:e.target.value}))} className="flt" placeholder="1-3"/></th>
-                  <th className="px-2 py-1"><input id="flt_sp" value={flt.sp||''} onChange={e=>setFlt(p=>({...p,sp:e.target.value}))} className="flt" placeholder=">50"/></th>
-                  <th className="px-2 py-1"><input id="flt_actualPrice" value={flt.actualPrice||''} onChange={e=>setFlt(p=>({...p,actualPrice:e.target.value}))} className="flt" placeholder=">100"/></th>
-                  <th className="px-2 py-1"><input id="flt_dUnit" value={flt.dUnit||''} onChange={e=>setFlt(p=>({...p,dUnit:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_dMargin" value={flt.dMargin||''} onChange={e=>setFlt(p=>({...p,dMargin:e.target.value}))} className="flt" placeholder=">15"/></th>
-                  <th className="px-2 py-1"><input id="flt_dNetUnit" value={flt.dNetUnit||''} onChange={e=>setFlt(p=>({...p,dNetUnit:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_dNetMargin" value={flt.dNetMargin||''} onChange={e=>setFlt(p=>({...p,dNetMargin:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_breakEvenSupply" value={flt.breakEvenSupply||''} onChange={e=>setFlt(p=>({...p,breakEvenSupply:e.target.value}))} className="flt" placeholder="<200"/></th>
-                  <th className="px-2 py-1"><input id="flt_bePrice" value={flt.bePrice||''} onChange={e=>setFlt(p=>({...p,bePrice:e.target.value}))} className="flt" placeholder="<200"/></th>
-                  <th className="px-2 py-1"><input id="flt_supplyRoom" value={flt.supplyRoom||''} onChange={e=>setFlt(p=>({...p,supplyRoom:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_wkSales" value={flt.wkSales||''} onChange={e=>setFlt(p=>({...p,wkSales:e.target.value}))} className="flt" placeholder=">10"/></th>
-                  <th className="px-2 py-1"><input id="flt_dProfit" value={flt.dProfit||''} onChange={e=>setFlt(p=>({...p,dProfit:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_wkNet" value={flt.wkNet||''} onChange={e=>setFlt(p=>({...p,wkNet:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_wkNetR" value={flt.wkNetR||''} onChange={e=>setFlt(p=>({...p,wkNetR:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_cumNet" value={flt.cumNet||''} onChange={e=>setFlt(p=>({...p,cumNet:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_cumNetR" value={flt.cumNetR||''} onChange={e=>setFlt(p=>({...p,cumNetR:e.target.value}))} className="flt" placeholder=">0"/></th>
+                  <th colSpan={7} className="px-2 py-1 text-left">
+                    <input value={flt.name||''} onChange={e=>setFlt(p=>({...p,name:e.target.value}))} className="flt" style={{maxWidth:'260px'}} placeholder="筛选商品（名称 / 编码）"/>
+                  </th>
                 </tr>
               </thead>
               <tbody>
