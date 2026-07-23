@@ -1762,15 +1762,21 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const matchNum = (v,expr)=>{
     if(!expr) return true;
     const val = (v===Infinity)?1e15:(v==null?NaN:Number(v));
-    const e = expr.replace(/\s/g,'');
+    // 归一化：全角符号 → 半角；≥ ≤ → >= <=；~ ～ – — → 区间符 -
+    let e = String(expr).replace(/\s/g,'')
+      .replace(/％/g,'%').replace(/＞/g,'>').replace(/＜/g,'<').replace(/＝/g,'=')
+      .replace(/≥/g,'>=').replace(/≤/g,'<=').replace(/[~～–—]/g,'-');
+    // 百分比字段按显示口径输入：剥掉数字后的 % 号（如 >15% → >15；10%-20% → 10-20）
+    e = e.replace(/(-?\d*\.?\d+)%/g,'$1');
     let m;
-    if(m=e.match(/^(-?\d*\.?\d+)-(-?\d*\.?\d+)$/)) return !isNaN(val)&&val>=+m[1]&&val<=+m[2];
-    if(m=e.match(/^(>=|<=|>|<|=)(-?\d*\.?\d+)$/)){
+    if(m=e.match(/^(-?\d*\.?\d+)-(-?\d*\.?\d+)$/)) return !isNaN(val)&&val>=+m[1]-1e-9&&val<=+m[2]+1e-9;
+    if(m=e.match(/^(>=|<=|==|>|<|=)(-?\d*\.?\d+)$/)){
       if(isNaN(val)) return false;
       const n=+m[2];
-      switch(m[1]){case'>':return val>n;case'<':return val<n;case'>=':return val>=n;case'<=':return val<=n;default:return Math.abs(val-n)<1e-6;}
+      // 等值按 2 位小数显示口径容差匹配（表内数值均以 toFixed(2) 展示）
+      switch(m[1]){case'>':return val>n;case'<':return val<n;case'>=':return val>=n-1e-9;case'<=':return val<=n+1e-9;default:return Math.abs(val-n)<0.005;}
     }
-    if(m=e.match(/^(-?\d*\.?\d+)$/)) return (!isNaN(val)&&Math.abs(val-+m[1])<1e-6) || String(v).includes(e);
+    if(m=e.match(/^(-?\d*\.?\d+)$/)) return (!isNaN(val)&&Math.abs(val-+m[1])<0.005) || String(v).includes(e);
     return true;
   };
   const clearDistFilters = () => setFlt({});
@@ -2216,18 +2222,23 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                   <th className="px-2 py-1"><input id="flt_sp" value={flt.sp||''} onChange={e=>setFlt(p=>({...p,sp:e.target.value}))} className="flt" placeholder=">50"/></th>
                   <th className="px-2 py-1"><input id="flt_actualPrice" value={flt.actualPrice||''} onChange={e=>setFlt(p=>({...p,actualPrice:e.target.value}))} className="flt" placeholder=">100"/></th>
                   <th className="px-2 py-1"><input id="flt_dUnit" value={flt.dUnit||''} onChange={e=>setFlt(p=>({...p,dUnit:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_dMargin" value={flt.dMargin||''} onChange={e=>setFlt(p=>({...p,dMargin:e.target.value}))} className="flt" placeholder=">15"/></th>
+                  <th className="px-2 py-1"><input id="flt_dMargin" value={flt.dMargin||''} onChange={e=>setFlt(p=>({...p,dMargin:e.target.value}))} className="flt" placeholder=">15%"/></th>
                   <th className="px-2 py-1"><input id="flt_dNetUnit" value={flt.dNetUnit||''} onChange={e=>setFlt(p=>({...p,dNetUnit:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_dNetMargin" value={flt.dNetMargin||''} onChange={e=>setFlt(p=>({...p,dNetMargin:e.target.value}))} className="flt" placeholder=">0"/></th>
+                  <th className="px-2 py-1"><input id="flt_dNetMargin" value={flt.dNetMargin||''} onChange={e=>setFlt(p=>({...p,dNetMargin:e.target.value}))} className="flt" placeholder=">0%"/></th>
                   <th className="px-2 py-1"><input id="flt_breakEvenSupply" value={flt.breakEvenSupply||''} onChange={e=>setFlt(p=>({...p,breakEvenSupply:e.target.value}))} className="flt" placeholder="<200"/></th>
                   <th className="px-2 py-1"><input id="flt_bePrice" value={flt.bePrice||''} onChange={e=>setFlt(p=>({...p,bePrice:e.target.value}))} className="flt" placeholder="<200"/></th>
                   <th className="px-2 py-1"><input id="flt_supplyRoom" value={flt.supplyRoom||''} onChange={e=>setFlt(p=>({...p,supplyRoom:e.target.value}))} className="flt" placeholder=">0"/></th>
                   <th className="px-2 py-1"><input id="flt_wkSales" value={flt.wkSales||''} onChange={e=>setFlt(p=>({...p,wkSales:e.target.value}))} className="flt" placeholder=">10"/></th>
                   <th className="px-2 py-1"><input id="flt_dProfit" value={flt.dProfit||''} onChange={e=>setFlt(p=>({...p,dProfit:e.target.value}))} className="flt" placeholder=">0"/></th>
                   <th className="px-2 py-1"><input id="flt_wkNet" value={flt.wkNet||''} onChange={e=>setFlt(p=>({...p,wkNet:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_wkNetR" value={flt.wkNetR||''} onChange={e=>setFlt(p=>({...p,wkNetR:e.target.value}))} className="flt" placeholder=">0"/></th>
+                  <th className="px-2 py-1"><input id="flt_wkNetR" value={flt.wkNetR||''} onChange={e=>setFlt(p=>({...p,wkNetR:e.target.value}))} className="flt" placeholder=">0%"/></th>
                   <th className="px-2 py-1"><input id="flt_cumNet" value={flt.cumNet||''} onChange={e=>setFlt(p=>({...p,cumNet:e.target.value}))} className="flt" placeholder=">0"/></th>
-                  <th className="px-2 py-1"><input id="flt_cumNetR" value={flt.cumNetR||''} onChange={e=>setFlt(p=>({...p,cumNetR:e.target.value}))} className="flt" placeholder=">0"/></th>
+                  <th className="px-2 py-1"><input id="flt_cumNetR" value={flt.cumNetR||''} onChange={e=>setFlt(p=>({...p,cumNetR:e.target.value}))} className="flt" placeholder=">0%"/></th>
+                </tr>
+                <tr>
+                  <th colSpan={18} className="px-3 py-1 text-left font-normal text-xs text-slate-400 bg-slate-50/60">
+                    筛选语法：&gt;100 大于 · &gt;=100 大于等于 · =100 等于 · &lt;=100 小于等于 · &lt;100 小于 · 10-20 区间；百分比字段按显示口径输入（如 &gt;15%）；支持全角符号（＞ ＝ ％ ≥ ≤ ～）
+                  </th>
                 </tr>
               </thead>
               <tbody>
