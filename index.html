@@ -1513,8 +1513,7 @@ function SkuManager({skuMaster,onSave,onClose}){
                       </td>
                     </tr>
                   );
-                })};
-                })()}
+                })}
               </tbody>
             </table>
           </div>
@@ -2100,8 +2099,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:r.wkSales===0?'#94a3b8':'#1e293b'}}>{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td>
                     </tr>
                   );
-                })};
-                })()}
+                });
+              })()}
               </tbody>
             </table>
           </div>
@@ -2296,8 +2295,8 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
                       <td className="px-3 py-2 text-right tabular-nums" style={{color:noSale?'#94a3b8':r.cumNetR>=0?'#16a34a':'#dc2626'}}>{noSale?'-':r.cumNetR.toFixed(2)+'%'}</td>
                     </tr>
                   );
-                })};
-                })()}
+                });
+              })()}
               </tbody>
             </table>
           </div>
