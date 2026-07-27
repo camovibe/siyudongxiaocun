@@ -183,7 +183,7 @@ function genSkuMetrics(skus, weeks){
           break;
         }
       }
-      const ratio    = w.sales>0 ? +(w.end/w.sales).toFixed(2) : 99;
+      const ratio    = w.sales>0 ? +(w.end/(w.sales/7*30)).toFixed(2) : 99;
       const ratioNet = w.sales>0 ? +(Math.max(0,(w.end-w.inbound))/(w.sales/7*30)).toFixed(2) : 99;
       const turnover = (firstBegin + w.end) > 0 ? +(totalSales/((firstBegin + w.end)/2)).toFixed(2) : 0;
       const dailyAvg = +(w.sales/7).toFixed(2);
@@ -412,7 +412,7 @@ function Dashboard(){
         const totalSales = series.slice(0, i+1).reduce((sum, item) => sum + (item.sales || 0), 0);
         let firstBegin = 0;
         for (let j = 0; j <= i; j++) { if ((series[j].begin || 0) > 0) { firstBegin = series[j].begin; break; } }
-        const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
+        const ratio = w.sales > 0 ? +(w.end / (w.sales/7*30)).toFixed(2) : 99;
         const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales/7*30)).toFixed(2) : 99;
         const turnover = (firstBegin + w.end) > 0 ? +(totalSales / ((firstBegin + w.end) / 2)).toFixed(2) : 0;
         const dailyAvg = +(w.sales / 7).toFixed(2);
@@ -592,7 +592,7 @@ function Dashboard(){
           const item = series[j];
           if (item && (item.begin || 0) > 0) { firstBegin = item.begin; break; }
         }
-        const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
+        const ratio = w.sales > 0 ? +(w.end / (w.sales/7*30)).toFixed(2) : 99;
         const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales/7*30)).toFixed(2) : 99;
         const turnover = (firstBegin + (w.end || 0)) > 0 ? +(totalSales / ((firstBegin + (w.end || 0)) / 2)).toFixed(2) : 0;
         const dailyAvg = +((w.sales || 0) / 7).toFixed(2);
