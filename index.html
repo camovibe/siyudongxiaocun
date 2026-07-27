@@ -184,7 +184,7 @@ function genSkuMetrics(skus, weeks){
         }
       }
       const ratio    = w.sales>0 ? +(w.end/w.sales).toFixed(2) : 99;
-      const ratioNet = w.sales>0 ? +(Math.max(0,(w.end-w.inbound))/w.sales).toFixed(2) : 99;
+      const ratioNet = w.sales>0 ? +(Math.max(0,(w.end-w.inbound))/(w.sales/7*30)).toFixed(2) : 99;
       const turnover = (firstBegin + w.end) > 0 ? +(totalSales/((firstBegin + w.end)/2)).toFixed(2) : 0;
       const dailyAvg = +(w.sales/7).toFixed(2);
       const avgPrice = w.sales>0 ? +(w.gmv/w.sales).toFixed(2) : 0;
@@ -413,7 +413,7 @@ function Dashboard(){
         let firstBegin = 0;
         for (let j = 0; j <= i; j++) { if ((series[j].begin || 0) > 0) { firstBegin = series[j].begin; break; } }
         const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
-        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / w.sales).toFixed(2) : 99;
+        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales/7*30)).toFixed(2) : 99;
         const turnover = (firstBegin + w.end) > 0 ? +(totalSales / ((firstBegin + w.end) / 2)).toFixed(2) : 0;
         const dailyAvg = +(w.sales / 7).toFixed(2);
         const avgPrice = w.sales > 0 ? +(w.gmv / w.sales).toFixed(2) : 0;
@@ -593,7 +593,7 @@ function Dashboard(){
           if (item && (item.begin || 0) > 0) { firstBegin = item.begin; break; }
         }
         const ratio = w.sales > 0 ? +(w.end / w.sales).toFixed(2) : 99;
-        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / w.sales).toFixed(2) : 99;
+        const ratioNet = w.sales > 0 ? +(Math.max(0, (w.end - w.inbound)) / (w.sales/7*30)).toFixed(2) : 99;
         const turnover = (firstBegin + (w.end || 0)) > 0 ? +(totalSales / ((firstBegin + (w.end || 0)) / 2)).toFixed(2) : 0;
         const dailyAvg = +((w.sales || 0) / 7).toFixed(2);
         const avgPrice = (w.sales || 0) > 0 ? +((w.gmv || 0) / w.sales).toFixed(2) : 0;
@@ -1828,7 +1828,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const bePrice = actualPrice>0 ? actualPrice*(1-opRate/100) : 0;
     const endStock = skuWeeks[s.code]?.[last]?.end || 0;
     const inboundStock = skuWeeks[s.code]?.[last]?.inbound || 0;
-    const stockSalesRatio = wkSales > 0 ? Math.max(0, (endStock - inboundStock)) / wkSales : 0;
+    const stockSalesRatio = wkSales > 0 ? Math.max(0, (endStock - inboundStock)) / (wkSales/7*30) : 0;
     return {...s, c, sp, unit, margin, wkSales, wkGmv, wkProfit:unit*wkSales, actualPrice, dUnit, dProfit, dMargin, breakEvenSupply, supplyRoom, cumNet, cumNetR, wkNet, wkNetR, dNetUnit, dNetMargin, bePrice, endStock, stockSalesRatio};
   });
   const displayRows = useMemo(()=>{
