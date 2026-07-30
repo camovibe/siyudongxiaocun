@@ -1881,6 +1881,12 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const u = (+supply[s.code]||0)-(+cost[s.code]||0);
     return sum + arr.reduce((a, w) => a + u*(w.sales||0), 0);
   }, 0);
+  const stockPotentialProfit = skuMaster.reduce((sum, s) => {
+    const end = skuWeeks[s.code]?.[last]?.end || 0;
+    const u = (+supply[s.code]||0)-(+cost[s.code]||0);
+    return sum + u * end;
+  }, 0);
+  const totalStockProfit = totalCumProfit + stockPotentialProfit;
   const totalWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.gmv || 0), 0);
   const totalCumGmv = skuMaster.reduce((sum, s) => {
     const arr = skuWeeks[s.code] || [];
@@ -2013,7 +2019,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
           <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="我方本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
           <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#16a34a" label="我方本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
           <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#16a34a" label="我方综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
-          <Kpi icon={<TrendingUp className="w-5 h-5"/>} tint="#16a34a" label="我方累计总毛利" value={'¥'+fmtMoney(totalCumProfit)}/>
+          <Kpi icon={<TrendingUp className="w-5 h-5"/>} tint="#16a34a" label="我方总库存毛利" value={'¥'+fmtMoney(totalStockProfit)} sub={`已实现 ¥${fmtMoney(totalCumProfit)} · 库存潜在 ¥${fmtMoney(stockPotentialProfit)}`}/>
         </div>
 
         <Card title="我方周度毛利趋势" subtitle="(供货价−成本) × 周销量 求和">
