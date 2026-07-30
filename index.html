@@ -1876,6 +1876,11 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
   const totalProfit = rows.reduce((a,r)=>a+r.wkProfit,0);
   const totalRev = rows.reduce((a,r)=>a+r.sp*r.wkSales,0);
   const avgMargin = totalRev>0?totalProfit/totalRev*100:0;
+  const totalCumProfit = skuMaster.reduce((sum, s) => {
+    const arr = skuWeeks[s.code] || [];
+    const u = (+supply[s.code]||0)-(+cost[s.code]||0);
+    return sum + arr.reduce((a, w) => a + u*(w.sales||0), 0);
+  }, 0);
   const totalWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.gmv || 0), 0);
   const totalCumGmv = skuMaster.reduce((sum, s) => {
     const arr = skuWeeks[s.code] || [];
@@ -1958,7 +1963,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
         <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
@@ -2004,10 +2009,11 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
           <h2 className="text-base font-bold text-emerald-800">我方（品牌方）利润</h2>
           <span className="text-xs text-emerald-600">口径：供货价 − 成本</span>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#16a34a" label="我方本周总毛利" value={'¥'+fmtMoney(totalProfit)}/>
           <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#16a34a" label="我方本周供货收入" value={'¥'+fmtMoney(totalRev)}/>
           <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#16a34a" label="我方综合毛利率" value={avgMargin.toFixed(2)+'%'}/>
+          <Kpi icon={<TrendingUp className="w-5 h-5"/>} tint="#16a34a" label="我方累计总毛利" value={'¥'+fmtMoney(totalCumProfit)}/>
         </div>
 
         <Card title="我方周度毛利趋势" subtitle="(供货价−成本) × 周销量 求和">
