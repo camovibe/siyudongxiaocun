@@ -1892,6 +1892,29 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     const arr = skuWeeks[s.code] || [];
     return sum + arr.reduce((a, w) => a + (w.gmv || 0), 0);
   }, 0);
+  const totalCumSales = skuMaster.reduce((sum, s) => {
+    const arr = skuWeeks[s.code] || [];
+    return sum + arr.reduce((a, w) => a + (w.sales || 0), 0);
+  }, 0);
+  const totalEndStock = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.end || 0), 0);
+  const totalStockQty = totalCumSales + totalEndStock;
+  const stockPotentialGmv = skuMaster.reduce((sum, s) => {
+    const end = skuWeeks[s.code]?.[last]?.end || 0;
+    const arr = skuWeeks[s.code] || [];
+    const cumSales = arr.reduce((a, w) => a + (w.sales || 0), 0);
+    const cumGmv = arr.reduce((a, w) => a + (w.gmv || 0), 0);
+    const actualPrice = cumSales > 0 ? cumGmv / cumSales : 0;
+    return sum + actualPrice * end;
+  }, 0);
+  const totalStockGmv = totalCumGmv + stockPotentialGmv;
+  const totalSupplyAmount = skuMaster.reduce((sum, s) => {
+    const arr = skuWeeks[s.code] || [];
+    const cumSales = arr.reduce((a, w) => a + (w.sales || 0), 0);
+    const end = skuWeeks[s.code]?.[last]?.end || 0;
+    return sum + (+supply[s.code] || 0) * (cumSales + end);
+  }, 0);
+  const avgSupplyPrice = totalStockQty > 0 ? totalSupplyAmount / totalStockQty : 0;
+  const avgSellPrice = totalStockQty > 0 ? totalStockGmv / totalStockQty : 0;
   const totalWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.sales || 0), 0);
   const prevWeekGmv = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last > 0 ? last - 1 : 0]?.gmv || 0), 0);
   const prevWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last > 0 ? last - 1 : 0]?.sales || 0), 0);
@@ -1972,7 +1995,14 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
         <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
-        <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="累计总GMV" value={'¥'+fmtMoney(totalCumGmv)}/>
+        <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="我方总库存GMV" value={'¥'+fmtMoney(totalStockGmv)} sub={`已实现 ¥${fmtMoney(totalCumGmv)} · 库存潜在 ¥${fmtMoney(stockPotentialGmv)}`}/>
+        <Kpi icon={<Store className="w-5 h-5"/>} tint="#8b5cf6" label="我方总供货额" value={'¥'+fmtMoney(totalSupplyAmount)} sub={`转化效率 ${(totalSupplyAmount>0?(totalStockGmv/totalSupplyAmount):0).toFixed(2)}x`}/>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Kpi icon={<Boxes className="w-5 h-5"/>} tint="#f59e0b" label="我方总库存件数" value={fmtNum(totalStockQty)} sub={`已售 ${fmtNum(totalCumSales)} · 期末 ${fmtNum(totalEndStock)}`}/>
+        <Kpi icon={<TrendingUp className="w-5 h-5"/>} tint="#16a34a" label="我方总库存毛利" value={'¥'+fmtMoney(totalStockProfit)} sub={`已实现 ¥${fmtMoney(totalCumProfit)} · 库存潜在 ¥${fmtMoney(stockPotentialProfit)}`}/>
+        <Kpi icon={<Tag className="w-5 h-5"/>} tint="#ec4899" label="我方总库存供货均价" value={'¥'+avgSupplyPrice.toFixed(2)} sub={`供货价口径`}/>
+        <Kpi icon={<Activity className="w-5 h-5"/>} tint="#06b6d4" label="对方总库存销售均价" value={'¥'+avgSellPrice.toFixed(2)} sub={`实际售价口径`}/>
       </div>
 
       {(unknownCodes.length>0 || missingBoth.length>0 || missingCostOnly.length>0 || missingSupplyOnly.length>0) && (
