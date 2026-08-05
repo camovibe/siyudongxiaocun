@@ -1907,12 +1907,16 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
     return sum + actualPrice * end;
   }, 0);
   const totalStockGmv = totalCumGmv + stockPotentialGmv;
-  const totalSupplyAmount = skuMaster.reduce((sum, s) => {
+  const realizedSupplyAmount = skuMaster.reduce((sum, s) => {
     const arr = skuWeeks[s.code] || [];
     const cumSales = arr.reduce((a, w) => a + (w.sales || 0), 0);
-    const end = skuWeeks[s.code]?.[last]?.end || 0;
-    return sum + (+supply[s.code] || 0) * (cumSales + end);
+    return sum + (+supply[s.code] || 0) * cumSales;
   }, 0);
+  const potentialSupplyAmount = skuMaster.reduce((sum, s) => {
+    const end = skuWeeks[s.code]?.[last]?.end || 0;
+    return sum + (+supply[s.code] || 0) * end;
+  }, 0);
+  const totalSupplyAmount = realizedSupplyAmount + potentialSupplyAmount;
   const avgSupplyPrice = totalStockQty > 0 ? totalSupplyAmount / totalStockQty : 0;
   const avgSellPrice = totalStockQty > 0 ? totalStockGmv / totalStockQty : 0;
   const totalWeekSales = skuMaster.reduce((sum, s) => sum + (skuWeeks[s.code]?.[last]?.sales || 0), 0);
@@ -1996,7 +2000,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
         <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="本周总GMV" value={'¥'+fmtMoney(totalWeekGmv)} sub={`较上周 ${gmvChg>=0?'+':''}${gmvChg.toFixed(1)}%`}/>
         <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#06b6d4" label="本周件数" value={fmtNum(totalWeekSales)} sub={`较上周 ${salesChg>=0?'+':''}${salesChg.toFixed(1)}%`}/>
         <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="我方总库存GMV" value={'¥'+fmtMoney(totalStockGmv)} sub={`已实现 ¥${fmtMoney(totalCumGmv)} · 库存潜在 ¥${fmtMoney(stockPotentialGmv)}`}/>
-        <Kpi icon={<Store className="w-5 h-5"/>} tint="#8b5cf6" label="我方总供货额" value={'¥'+fmtMoney(totalSupplyAmount)} sub={`转化效率 ${(totalSupplyAmount>0?(totalStockGmv/totalSupplyAmount):0).toFixed(2)}x`}/>
+        <Kpi icon={<Store className="w-5 h-5"/>} tint="#8b5cf6" label="我方总供货额" value={'¥'+fmtMoney(totalSupplyAmount)} sub={`整体转化 ${(totalSupplyAmount>0?(totalStockGmv/totalSupplyAmount):0).toFixed(2)}x ｜ 已实现 ¥${fmtMoney(realizedSupplyAmount)}(转化 ${(realizedSupplyAmount>0?(totalCumGmv/realizedSupplyAmount):0).toFixed(2)}x) · 库存潜在 ¥${fmtMoney(potentialSupplyAmount)}(转化 ${(potentialSupplyAmount>0?(stockPotentialGmv/potentialSupplyAmount):0).toFixed(2)}x)`}/>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi icon={<Boxes className="w-5 h-5"/>} tint="#f59e0b" label="我方总库存件数" value={fmtNum(totalStockQty)} sub={`已售 ${fmtNum(totalCumSales)} · 期末 ${fmtNum(totalEndStock)}`}/>
