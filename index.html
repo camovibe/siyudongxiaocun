@@ -466,19 +466,6 @@ function Dashboard(){
         })
         .catch(() => {});
     };
-      fetch('https://api.github.com/gists/'+gistId, { headers: { 'Accept': 'application/vnd.github.v3+json' }, cache: 'no-store' })
-        .then(r => r.ok ? r.json() : null)
-        .then(json => {
-          const file = json && json.files && json.files['data.json'];
-          if (!file || !file.content) return;
-          const gistData = JSON.parse(file.content);
-          if (gistData.skuMaster && gistData.skuWeeks) {
-            loadDataFromJson(gistData, { silent: true });
-            safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
-          }
-        })
-        .catch(() => {});
-    };
     fetchLatest();
     const onFocus = () => { if (document.visibilityState === 'visible') fetchLatest(); };
     document.addEventListener('visibilitychange', onFocus);
