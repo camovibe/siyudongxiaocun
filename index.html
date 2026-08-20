@@ -430,6 +430,12 @@ function Dashboard(){
 
   const tryLoadGist = (id) => {
     if (!id) return;
+    fetch(`https://gist.githubusercontent.com/camovibe/${id}/raw/data.json?t=${Date.now()}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(gistData => { if (gistData && gistData.skuMaster && gistData.skuWeeks) loadDataFromJson(gistData); })
+      .catch(() => {});
+  };
+    if (!id) return;
     fetch(`https://gist.githubusercontent.com/raw/${id}/data.json?t=${Date.now()}`)
       .then(r => r.ok ? r.json() : null)
       .then(gistData => { if (gistData && gistData.skuMaster && gistData.skuWeeks) loadDataFromJson(gistData); })
@@ -450,6 +456,16 @@ function Dashboard(){
       return;
     }
     const fetchLatest = () => {
+      fetch(`https://gist.githubusercontent.com/camovibe/${gistId}/raw/data.json?t=${Date.now()}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(gistData => {
+          if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+            loadDataFromJson(gistData, { silent: true });
+            safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
+          }
+        })
+        .catch(() => {});
+    };
       fetch('https://api.github.com/gists/'+gistId, { headers: { 'Accept': 'application/vnd.github.v3+json' }, cache: 'no-store' })
         .then(r => r.ok ? r.json() : null)
         .then(json => {
