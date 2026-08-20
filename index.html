@@ -748,29 +748,21 @@ function Dashboard(){
 
         {tab==='insight' && <InsightView skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly}/>}
 
-        {tab==='profit' && (
-          unlocked
-            ? <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />
-            
-        )}
+        {tab==='profit' && <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />}
 
-        {tab==='price' && (
-          unlocked
-            ? <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />
-            
-        )}
+        {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />}
 
         <div className="flex items-start gap-2 text-xs text-slate-400 px-1 pb-4">
           <Info className="w-3.5 h-3.5 mt-0.5 shrink-0"/>
           <span>演示数据，口径与你的总表公式一致。库销比(净)已剔除当周入库；滚动周转=售出÷((期初+期末)/2)；倒算均价=GMV÷售出件数。成本/控价支持批量上传（覆盖更新）。</span>
         </div>
 
-        {showPassSetting && <PasswordSetting current={passcode} onSave={setPasscode} onClose={()=>setShowPassSetting(false)}/>}
-        {showSkuManager && <SkuManager skuMaster={sortedSkuMaster} onSave={regenerateAll} onClose={()=>setShowSkuManager(false)}/>}
+        
+        
         
         {showTotalTrend && <TotalTrendModal data={totalTrendData} mode={showTotalTrend} onClose={()=>setShowTotalTrend(null)}/>}
-        <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} skuMaster={skuMaster}/>
-        <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} skuMaster={skuMaster}/>
+        
+        
       </div>
     </div>
   );
@@ -1763,7 +1755,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster}){
           </div>
         </div>
       </div>
-      <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="cost" onApply={applyUpload} skuMaster={skuMaster}/>
+      
       {showSupplyDetail && <SupplyDetailModal skuMaster={skuMaster} skuWeeks={skuWeeks} supply={supply} onClose={()=>setShowSupplyDetail(false)} />}
     </div>
   );
@@ -1874,7 +1866,7 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
           </table>
         </div>
       </div>
-      <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="price" onApply={applyUpload} skuMaster={skuMaster}/>
+      
     </div>
   );
 }
