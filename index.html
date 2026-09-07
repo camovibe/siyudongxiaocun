@@ -706,9 +706,7 @@ function Dashboard(){
 
   const [showTotalTrend,setShowTotalTrend] = useState(null);
 
-  const [activities, setActivities] = useState(() => {
-    try { const saved = safeStorage.getItem('zhaofeng_activities'); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
-  });
+  const [activities, setActivities] = useState([]);
 
   const sortedSkuMaster = useMemo(() => {
 
@@ -915,6 +913,18 @@ function Dashboard(){
         .then(gistData => {
 
           if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+
+            const localCached = safeStorage.getItem('zhaofeng_data');
+
+            let localData = null;
+
+            try { localData = localCached ? JSON.parse(localCached) : null; } catch (e) { localData = null; }
+
+            if (localData && Array.isArray(localData.activities) && localData.activities.length > 0) {
+
+              gistData.activities = localData.activities;
+
+            }
 
             loadDataFromJson(gistData, { silent: true });
 
@@ -3775,9 +3785,12 @@ function safeDiv(a, b) {
   if (!b || b === 0) return 0;
   return a / b;
 }
-function r2(v, d) {
-  const factor = Math.pow(10, d);
-  return Math.round(Number(v || 0) * factor) / factor;
+function r2(v, d = 2) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  const decimals = Number.isFinite(Number(d)) ? Number(d) : 2;
+  const factor = Math.pow(10, decimals);
+  return Math.round(n * factor) / factor;
 }
 
 /**
