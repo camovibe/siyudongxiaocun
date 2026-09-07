@@ -494,6 +494,8 @@ const TABS = [
 
   { id:'insight', label:'机会洞察', icon:Lightbulb, lock:false },
 
+  { id:'activity', label:'活动ROI', icon:Target, lock:false },
+
   { id:'profit', label:'利润监控', icon:CircleDollarSign, lock:true },
 
   { id:'price', label:'控价监控', icon:ShieldAlert, lock:true },
@@ -704,7 +706,9 @@ function Dashboard(){
 
   const [showTotalTrend,setShowTotalTrend] = useState(null);
 
-
+  const [activities, setActivities] = useState(() => {
+    try { const saved = safeStorage.getItem('zhaofeng_activities'); return saved ? JSON.parse(saved) : []; } catch(e) { return []; }
+  });
 
   const sortedSkuMaster = useMemo(() => {
 
@@ -728,7 +732,7 @@ function Dashboard(){
 
   const exportData = () => {
 
-    const data = {skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, version:'v3', exportedAt:Date.now()};
+    const data = {skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, version:'v3', exportedAt:Date.now()};
 
     const json = JSON.stringify(data, null, 2);
 
@@ -821,6 +825,8 @@ function Dashboard(){
     setCtrl(data.ctrl || Object.fromEntries(data.skuMaster.map(s=>[s.code,Math.round(s.price*0.92)])));
 
     if(!data.skuMaster.find(s=>s.code===skuCode)) setSkuCode(data.skuMaster[0]?.code || '');
+
+    if (Array.isArray(data.activities)) setActivities(data.activities);
 
     setHasRealData(true);
 
@@ -942,7 +948,7 @@ function Dashboard(){
 
     if (!hasRealData) return;
 
-    const data = { skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, version:'v3', exportedAt:Date.now() };
+    const data = { skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, version:'v3', exportedAt:Date.now() };
 
     safeStorage.setItem('zhaofeng_data', JSON.stringify(data));
 
@@ -1489,6 +1495,10 @@ function Dashboard(){
 
 
         {tab==='insight' && <InsightView skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly}/>}
+
+
+
+        {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} activities={activities} setActivities={setActivities} isReadOnly={isReadOnly} />}
 
 
 
@@ -3739,6 +3749,459 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
 
 
 
+
+
+
+/* ================= Activity ROI Engine V3 ================= */
+
+const ROI_CONFIG = {
+  baselinePeriods: 8,
+  postPeriods: 4,
+  // 罗盘内部管理规则：有效增量 = 活动窗口增量 × (50% + 50% × 持续性)
+  baseEffectiveFactor: 0.50,
+  persistenceWeight: 0.50,
+  // 管理评级阈值，仅用于内部决策，不代表行业标准
+  gradeThresholds: { S: 5, A: 3, B: 2, C: 1 }
+};
+
+function sumArr(arr) {
+  return (arr || []).reduce((total, value) => total + Number(value || 0), 0);
+}
+function avgArr(arr) {
+  if (!arr || arr.length === 0) return 0;
+  return sumArr(arr) / arr.length;
+}
+function safeDiv(a, b) {
+  if (!b || b === 0) return 0;
+  return a / b;
+}
+function r2(v, d) {
+  const factor = Math.pow(10, d);
+  return Math.round(Number(v || 0) * factor) / factor;
+}
+
+/**
+ * 活动 ROI 核心口径：
+ * GMV = 托盘商卖给 C 端用户的终端纯销 GMV
+ * Sell-in 不进入此函数。
+ */
+function calculateActivityROI(activityGmv) {
+  const {
+    baselineSales,
+    activityWeekSellOut,
+    activityWindowSellOut,
+    windowPeriods,
+    postActivitySales,
+    postPeriodsRequired = ROI_CONFIG.postPeriods,
+    brandInvestment,
+    activityPriceSubsidy = 0
+  } = activityGmv;
+
+  /* ---------- 1. Baseline ---------- */
+  const validBaseline = (baselineSales || []).map(Number).filter(v => Number.isFinite(v));
+  const baselineWeekly = r2(avgArr(validBaseline), 2);
+
+  /* ---------- 2. 活动周 ---------- */
+  const actualWeek = Number(activityWeekSellOut || 0);
+  const weekIncremental = Math.max(0, actualWeek - baselineWeekly);
+  const weekLift = safeDiv(actualWeek, baselineWeekly);
+  const weekIncRate = safeDiv(weekIncremental, baselineWeekly);
+
+  /* ---------- 3. 活动窗口 ---------- */
+  const winPeriods = Math.max(1, Number(windowPeriods || 1));
+  const winBaseline = baselineWeekly * winPeriods;
+  const winActual = Number(activityWindowSellOut || 0);
+  const winIncremental = Math.max(0, winActual - winBaseline);
+  const winLift = safeDiv(winActual, winBaseline);
+  const winIncRate = safeDiv(winIncremental, winBaseline);
+  const windowWeeklyIncremental = safeDiv(winIncremental, winPeriods);
+
+  /* ---------- 4. 活动后持续性（时间标准化） ---------- */
+  const postSales = (postActivitySales || []).map(Number).filter(v => Number.isFinite(v));
+  const postBaselineVal = baselineWeekly * postSales.length;
+  const postActual = sumArr(postSales);
+
+  // 允许负增量，反映活动透支
+  const postNetIncremental = postSales.reduce((total, sale) => total + (sale - baselineWeekly), 0);
+  const postWeeklyIncremental = postSales.length > 0 ? postNetIncremental / postSales.length : 0;
+
+  let persistenceRate = 0;
+  if (windowWeeklyIncremental > 0) {
+    persistenceRate = postWeeklyIncremental / windowWeeklyIncremental;
+  }
+  persistenceRate = Math.min(1, Math.max(-1, persistenceRate));
+
+  /* ---------- 5. 有效增量（管理规则） ---------- */
+  const effectiveFactor = ROI_CONFIG.baseEffectiveFactor + ROI_CONFIG.persistenceWeight * Math.max(0, persistenceRate);
+  const effectiveIncremental = winIncremental * effectiveFactor;
+
+  /* ---------- 6. 品牌真实投入 ---------- */
+  const baseInvestment = Math.max(0, Number(brandInvestment || 0));
+  const priceSubsidy = Math.max(0, Number(activityPriceSubsidy || 0));
+  const totalBrandInvestment = baseInvestment + priceSubsidy;
+
+  /* ---------- 7. ROI ---------- */
+  const roi = totalBrandInvestment > 0 ? effectiveIncremental / totalBrandInvestment : Infinity;
+  const costRate = effectiveIncremental > 0 ? totalBrandInvestment / effectiveIncremental : 0;
+  const costRatePct = costRate * 100;
+
+  /* ---------- 8. 观察期完整性 ---------- */
+  const requiredPostPeriods = Math.max(1, Number(postPeriodsRequired || ROI_CONFIG.postPeriods));
+  const observationComplete = postSales.length >= requiredPostPeriods;
+
+  /* ---------- 9. 评级（仅根据 ROI） ---------- */
+  let grade = 'D', label = '无效', recommendation = '原则上停止品牌投入';
+
+  if (!observationComplete) {
+    grade = '—'; label = '观察不足'; recommendation = `活动后仅观察 ${postSales.length}/${requiredPostPeriods} 周，暂不进行最终评级`;
+  } else if (roi >= ROI_CONFIG.gradeThresholds.S) {
+    grade = 'S'; label = '优秀'; recommendation = '建议加大同类活动投入';
+  } else if (roi >= ROI_CONFIG.gradeThresholds.A) {
+    grade = 'A'; label = '良好'; recommendation = '建议保持合作并复制活动机制';
+  } else if (roi >= ROI_CONFIG.gradeThresholds.B) {
+    grade = 'B'; label = '一般'; recommendation = '可以继续，但要求优化活动成本与执行';
+  } else if (roi >= ROI_CONFIG.gradeThresholds.C) {
+    grade = 'C'; label = '偏弱'; recommendation = '限制品牌投入，要求提升终端纯销效率';
+  }
+
+  return {
+    baseline: { weeklySellOut: baselineWeekly, periods: validBaseline.length },
+    activityWeek: { activityWeekSellOut: r2(actualWeek), activityWeekBaseline: r2(baselineWeekly), activityWeekIncremental: r2(weekIncremental), activityWeekLift: r2(weekLift, 3), activityWeekIncrementalRate: r2(weekIncRate, 4) },
+    activityWindow: { windowPeriods: winPeriods, windowActualSellOut: r2(winActual), windowBaselineSellOut: r2(winBaseline), windowIncrementalSellOut: r2(winIncremental), windowWeeklyIncremental: r2(windowWeeklyIncremental), windowLift: r2(winLift, 3), windowIncrementalRate: r2(winIncRate, 4) },
+    postActivity: { postPeriods: postSales.length, postPeriodsRequired: requiredPostPeriods, postActualSellOut: r2(postActual), postBaselineSellOut: r2(postBaselineVal), postNetIncrementalSellOut: r2(postNetIncremental), postWeeklyIncremental: r2(postWeeklyIncremental), persistenceRate: r2(persistenceRate, 4), observationComplete },
+    effectiveIncremental: { persistenceRate: r2(persistenceRate, 4), effectiveFactor: r2(effectiveFactor, 4), effectiveIncrementalSellOut: r2(effectiveIncremental) },
+    investment: { brandInvestment: r2(baseInvestment), activityPriceSubsidy: r2(priceSubsidy), totalBrandInvestment: r2(totalBrandInvestment) },
+    return: { incrementalSellOutROI: roi === Infinity ? Infinity : r2(roi), incrementalCostRate: r2(costRate, 4), incrementalCostRatePercent: r2(costRatePct, 2) },
+    evaluation: { grade, label, recommendation }
+  };
+}
+
+function SkuPicker({ skuMaster, selectedCodes, onChange, mode }) {
+  const [search, setSearch] = useState('');
+  const isAll = mode === 'all';
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return skuMaster;
+    const q = search.trim().toLowerCase();
+    return skuMaster.filter(s => s.name.toLowerCase().includes(q) || s.code.includes(q));
+  }, [skuMaster, search]);
+
+  const selectedSet = new Set(selectedCodes || []);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={isAll} onChange={e => onChange({ mode: e.target.checked ? 'all' : 'custom', codes: [] })} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"/>
+          <span className="text-sm font-medium text-slate-700">全部 SKU</span>
+        </label>
+        {!isAll && (
+          <>
+            <span className="text-xs text-slate-400">已选 {selectedCodes.length} 个</span>
+            {selectedCodes.length > 0 && <button onClick={() => onChange({ mode: 'custom', codes: [] })} className="text-xs text-red-500 hover:text-red-600">清空</button>}
+          </>
+        )}
+      </div>
+
+      {!isAll && (
+        <>
+          <div className="flex flex-wrap gap-1.5 min-h-[1.5rem]">
+            {selectedCodes.map(code => {
+              const s = skuMaster.find(x => x.code === code);
+              if (!s) return null;
+              return (
+                <span key={code} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {s.name}
+                  <button onClick={() => onChange({ mode: 'custom', codes: selectedCodes.filter(c => c !== code) })} className="hover:text-red-500">×</button>
+                </span>
+              );
+            })}
+          </div>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索 SKU 名称或编码..." className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm"/>
+          <div className="max-h-40 overflow-y-auto border border-slate-100 rounded-lg">
+            {filtered.map(s => {
+              const checked = selectedSet.has(s.code);
+              return (
+                <label key={s.code} className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50 ${checked ? 'bg-indigo-50/50' : ''}`}>
+                  <input type="checkbox" checked={checked} onChange={e => {
+                    const next = e.target.checked ? [...selectedCodes, s.code] : selectedCodes.filter(c => c !== s.code);
+                    onChange({ mode: 'custom', codes: next });
+                  }} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"/>
+                  <span className="font-mono text-xs text-slate-400 w-16">{s.code}</span>
+                  <span className="text-slate-700">{s.name}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full ml-auto" style={{background: CAT_COLOR[s.cat]+'1a', color: CAT_COLOR[s.cat]}}>{s.cat}</span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOnly }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const [fName, setFName] = useState('');
+  const [fStartWeek, setFStartWeek] = useState(() => PERIODS[Math.max(0, PERIODS.length - 1)]?.label || '');
+  const [fWindow, setFWindow] = useState(3);
+  const [fBaseline, setFBaseline] = useState(8);
+  const [fPost, setFPost] = useState(4);
+  const [fInvestment, setFInvestment] = useState('');
+  const [fSubsidy, setFSubsidy] = useState('');
+  const [fSkuMode, setFSkuMode] = useState('all');
+  const [fSkus, setFSkus] = useState([]);
+
+  const getPeriodIdx = (label) => PERIODS.findIndex(p => p.label === label);
+
+  const normalizeActivity = (act) => {
+    const skuMode = act.skuMode || (act.skuCodes && act.skuCodes.length > 0 ? 'custom' : 'all');
+    return { ...act, skuMode, activityPriceSubsidy: Number(act.activityPriceSubsidy || 0) };
+  };
+
+  const getGmv = (code, idx) => Number(skuWeeks[code]?.[idx]?.gmv || 0);
+
+  const calculateForActivity = (rawAct) => {
+    const act = normalizeActivity(rawAct);
+    const startIdx = getPeriodIdx(act.startWeek);
+    if (startIdx < 0) return null;
+
+    const validSkus = (act.skuMode === 'all' ? skuMaster.map(s => s.code) : (act.skuCodes || []))
+      .filter(code => skuMaster.some(s => s.code === code));
+    if (validSkus.length === 0) return { error: '未选择有效 SKU' };
+
+    const getVal = (idx) => validSkus.reduce((sum, code) => sum + getGmv(code, idx), 0);
+
+    const baselineSales = [];
+    for (let i = startIdx - act.baselinePeriods; i < startIdx; i++) {
+      if (i >= 0) baselineSales.push(getVal(i));
+    }
+
+    const activityWeekSellOut = getVal(startIdx);
+
+    let windowVal = 0;
+    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) {
+      windowVal += getVal(i);
+    }
+
+    const postActivitySales = [];
+    for (let i = startIdx + act.windowPeriods; i < startIdx + act.windowPeriods + act.postPeriods && i < PERIODS.length; i++) {
+      postActivitySales.push(getVal(i));
+    }
+
+    return calculateActivityROI({
+      baselineSales,
+      activityWeekSellOut,
+      activityWindowSellOut: windowVal,
+      windowPeriods: act.windowPeriods,
+      postActivitySales,
+      postPeriodsRequired: act.postPeriods,
+      brandInvestment: act.brandInvestment,
+      activityPriceSubsidy: act.activityPriceSubsidy
+    });
+  };
+
+  const resetForm = () => {
+    setFName(''); setFInvestment(''); setFSubsidy(''); setFSkus([]); setFSkuMode('all'); 
+  };
+
+
+  const handleSave = () => {
+    const investment = Number(fInvestment || 0);
+    const subsidy = Number(fSubsidy || 0);
+    if (!fName || !fStartWeek || (investment + subsidy) <= 0) {
+      alert('请填写活动名称、起始周和品牌投入');
+      return;
+    }
+    const newAct = {
+      id: Date.now().toString(),
+      name: fName,
+      startWeek: fStartWeek,
+      windowPeriods: Number(fWindow) || 3,
+      baselinePeriods: Number(fBaseline) || 8,
+      postPeriods: Number(fPost) || 4,
+      brandInvestment: investment,
+      activityPriceSubsidy: subsidy,
+      skuMode: fSkuMode,
+      skuCodes: fSkuMode === 'all' ? [] : [...fSkus],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    setActivities(prev => [...prev, newAct]);
+    setSelectedId(newAct.id);
+
+    setShowForm(false);
+    resetForm();
+  };
+
+  const handleDelete = (id) => {
+    if (!confirm('确定删除该活动？')) return;
+    setActivities(prev => prev.filter(a => a.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
+
+  const selectedActivity = activities.find(a => a.id === selectedId);
+  const rawResult = selectedActivity ? calculateForActivity(selectedActivity) : null;
+  const hasError = rawResult && rawResult.error;
+  const result = hasError ? null : rawResult;
+
+  const gradeColors = { S: '#16a34a', A: '#0d9488', B: '#ca8a04', C: '#ea580c', D: '#dc2626', '—': '#94a3b8' };
+  const gradeBg = { S: 'bg-green-50 border-green-200', A: 'bg-teal-50 border-teal-200', B: 'bg-yellow-50 border-yellow-200', C: 'bg-orange-50 border-orange-200', D: 'bg-red-50 border-red-200', '—': 'bg-slate-50 border-slate-200' };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-800">活动 ROI 分析</h2>
+          <span className="text-xs text-slate-500">基于终端纯销 GMV · 多 SKU 聚合</span>
+        </div>
+        {!isReadOnly && (
+          <button onClick={() => { setShowForm(!showForm); if (showForm) { resetForm(); } }} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+            <Target className="w-4 h-4"/>{showForm ? '取消' : '新增活动'}
+          </button>
+        )}
+      </div>
+
+      <div className="text-xs text-slate-400 flex items-center gap-1">
+        <Info className="w-3.5 h-3.5"/>
+        <span>评级阈值为罗盘内部管理规则，不代表行业标准。</span>
+      </div>
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+          <h3 className="font-semibold text-slate-700">{'录入活动'}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div><label className="text-xs text-slate-500 mb-1 block">活动名称</label><input type="text" value={fName} onChange={e => setFName(e.target.value)} placeholder="例如：618大促" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动起始周</label><select value={fStartWeek} onChange={e => setFStartWeek(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">{PERIODS.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}</option>)}</select></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => setFWindow(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">Baseline 周数</label><input type="number" min={2} max={12} value={fBaseline} onChange={e => setFBaseline(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动后观察（周）</label><input type="number" min={1} max={8} value={fPost} onChange={e => setFPost(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">品牌基础投入（元）</label><input type="number" min={0} value={fInvestment} onChange={e => setFInvestment(e.target.value)} placeholder="现金+赠品+物料..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动价格补贴（元）</label><input type="number" min={0} value={fSubsidy} onChange={e => setFSubsidy(e.target.value)} placeholder="仅本场额外补贴" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">参与 SKU</label>
+            <SkuPicker skuMaster={skuMaster} selectedCodes={fSkus} mode={fSkuMode} onChange={({mode, codes}) => { setFSkuMode(mode); setFSkus(codes); }}/>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setShowForm(false); resetForm(); }} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">取消</button>
+            <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">{'保存并计算'}</button>
+          </div>
+        </div>
+      )}
+
+      {activities.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {activities.map(act => {
+            const res = calculateForActivity(act);
+            const grade = res?.error ? '?' : (res?.evaluation?.grade || '?');
+            return (
+              <button key={act.id} onClick={() => setSelectedId(act.id)} className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border font-medium transition-colors ${selectedId === act.id ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                <span>{act.name}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{background: (gradeColors[grade] || '#94a3b8') + '20', color: gradeColors[grade] || '#94a3b8'}}>{grade}</span>
+                {!isReadOnly && (
+                  <span onClick={(e) => { e.stopPropagation(); }} className="ml-1 text-slate-400 hover:text-indigo-500 cursor-pointer" title="编辑">✎</span>
+                )}
+                {!isReadOnly && (
+                  <span onClick={(e) => { e.stopPropagation(); handleDelete(act.id); }} className="text-slate-400 hover:text-red-500 cursor-pointer">×</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {hasError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center text-amber-700">
+          <AlertTriangle className="w-8 h-8 mx-auto mb-2"/>
+          <p className="font-medium">{rawResult.error}</p>
+          <p className="text-sm mt-1 text-amber-600">请检查活动 SKU 是否有效</p>
+        </div>
+      )}
+
+      {result && selectedActivity && (
+        <div className="space-y-4">
+          <div className={`rounded-xl border p-4 flex items-center justify-between flex-wrap gap-3 ${gradeBg[result.evaluation.grade] || 'bg-slate-50 border-slate-200'}`}>
+            <div>
+              <div className="text-2xl font-bold" style={{color: gradeColors[result.evaluation.grade] || '#94a3b8'}}>{result.evaluation.grade}级 · {result.evaluation.label}</div>
+              <div className="text-sm mt-1" style={{color: gradeColors[result.evaluation.grade] || '#94a3b8', opacity: 0.8}}>{result.evaluation.recommendation}</div>
+              {!result.postActivity.observationComplete && (
+                <div className="text-xs mt-1 text-amber-600">活动后观察 {result.postActivity.postPeriods}/{result.postActivity.postPeriodsRequired} 周 · 暂不定级</div>
+              )}
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-slate-500">Incremental Sell-out ROI</div>
+              <div className="text-3xl font-bold text-slate-800">{result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI}x</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="窗口增量纯销" value={'¥' + fmtMoney(result.activityWindow.windowIncrementalSellOut)} sub={result.activityWindow.windowPeriods + '周窗口'}/>
+            <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#ea580c" label="有效增量纯销" value={'¥' + fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)} sub={'因子 ' + (result.effectiveIncremental.effectiveFactor * 100).toFixed(0) + '%'}/>
+            <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="Incremental ROI" value={(result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI) + 'x'}/>
+            <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#dc2626" label="增量成本率" value={result.return.incrementalCostRatePercent + '%'}/>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card title="活动周详情" subtitle="活动周 vs Baseline">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">活动周实际纯销</span><span className="font-medium">¥{fmtMoney(result.activityWeek.activityWeekSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Baseline 周均纯销</span><span className="font-medium">¥{fmtMoney(result.activityWeek.activityWeekBaseline)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">活动周增量纯销</span><span className="font-medium text-green-600">¥{fmtMoney(result.activityWeek.activityWeekIncremental)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">增量率</span><span className="font-medium">{(result.activityWeek.activityWeekIncrementalRate * 100).toFixed(2)}%</span></div>
+              </div>
+            </Card>
+
+            <Card title="活动窗口详情" subtitle={`${result.activityWindow.windowPeriods} 周窗口`}>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">窗口实际纯销</span><span className="font-medium">¥{fmtMoney(result.activityWindow.windowActualSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">窗口 Baseline 纯销</span><span className="font-medium">¥{fmtMoney(result.activityWindow.windowBaselineSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">窗口增量纯销</span><span className="font-medium text-green-600">¥{fmtMoney(result.activityWindow.windowIncrementalSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">窗口周均增量</span><span className="font-medium">¥{fmtMoney(result.activityWindow.windowWeeklyIncremental)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">窗口 Lift</span><span className="font-medium">{result.activityWindow.windowLift}x</span></div>
+              </div>
+            </Card>
+
+            <Card title="活动后持续性" subtitle={`${result.postActivity.postPeriods}/${result.postActivity.postPeriodsRequired} 周观察期`}>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">活动后实际纯销</span><span className="font-medium">¥{fmtMoney(result.postActivity.postActualSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">活动后 Baseline 纯销</span><span className="font-medium">¥{fmtMoney(result.postActivity.postBaselineSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">活动后净增量</span><span className={`font-medium ${result.postActivity.postNetIncrementalSellOut >= 0 ? 'text-green-600' : 'text-red-500'}`}>{result.postActivity.postNetIncrementalSellOut >= 0 ? '+' : ''}¥{fmtMoney(Math.abs(result.postActivity.postNetIncrementalSellOut))}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">活动后周均增量</span><span className={`font-medium ${result.postActivity.postWeeklyIncremental >= 0 ? 'text-green-600' : 'text-red-500'}`}>{result.postActivity.postWeeklyIncremental >= 0 ? '+' : ''}¥{fmtMoney(Math.abs(result.postActivity.postWeeklyIncremental))}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">持续性系数</span><span className={`font-medium ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{(result.postActivity.persistenceRate * 100).toFixed(1)}%</span></div>
+                {!result.postActivity.observationComplete && (
+                  <div className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mt-1">观察期尚未完成，持续性数据可能不准确</div>
+                )}
+              </div>
+            </Card>
+
+            <Card title="有效增量与 ROI" subtitle="核心结论">
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">有效因子（管理规则）</span><span className="font-medium">{(result.effectiveIncremental.effectiveFactor * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">有效增量纯销</span><span className="font-medium text-green-600 font-bold">¥{fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">品牌基础投入</span><span className="font-medium">¥{fmtMoney(result.investment.brandInvestment)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">活动价格补贴</span><span className="font-medium">¥{fmtMoney(result.investment.activityPriceSubsidy)}</span></div>
+                <div className="flex justify-between border-t border-slate-100 pt-1"><span className="text-slate-700 font-medium">品牌真实投入合计</span><span className="font-bold text-orange-600">¥{fmtMoney(result.investment.totalBrandInvestment)}</span></div>
+                <div className="flex justify-between border-t border-slate-100 pt-2 mt-1"><span className="text-slate-700 font-medium">Incremental ROI</span><span className="font-bold text-indigo-600 text-lg">{result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI}x</span></div>
+                <div className="flex justify-between"><span className="text-slate-700 font-medium">增量成本率</span><span className="font-bold text-orange-600">{result.return.incrementalCostRatePercent}%</span></div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {!result && activities.length === 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400 text-sm">
+          <Target className="w-12 h-12 mx-auto mb-3 text-slate-300"/>
+          <p>暂无活动数据</p>
+          <p className="mt-1">暂无活动记录。活动数据由管理员维护，只读展示。</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Card({title, subtitle, action, children}){
 
