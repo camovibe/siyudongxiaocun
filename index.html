@@ -278,7 +278,16 @@ function findPeriodIdx(label) {
 
 }
 
-
+function normalizeImportedActivity(act) {
+  if (!act || typeof act !== 'object') return null;
+  return {
+    ...act,
+    activityChannel: act.activityChannel || 'ALL',
+    skuMode: act.skuMode || (act.skuCodes && act.skuCodes.length > 0 ? 'custom' : 'all'),
+    activityPriceSubsidy: Number(act.activityPriceSubsidy || 0),
+    updatedAt: act.updatedAt || act.createdAt || Date.now()
+  };
+}
 
 const SKUS = [
 
@@ -307,7 +316,6 @@ const SKUS = [
   { code:'490023', name:'女士多维矿物质片', cat:'基础维矿', price:150, demand:240, profile:'healthy' },
 
 ];
-
 const PROFILE = {
 
   hot:{trend:0.022,cover:1.3,reorder:1.0},
@@ -824,7 +832,7 @@ function Dashboard(){
 
     if(!data.skuMaster.find(s=>s.code===skuCode)) setSkuCode(data.skuMaster[0]?.code || '');
 
-    if (Array.isArray(data.activities)) setActivities(data.activities);
+    if (Array.isArray(data.activities)) setActivities(data.activities.map(normalizeImportedActivity).filter(Boolean));
 
     setHasRealData(true);
 
@@ -920,7 +928,17 @@ function Dashboard(){
 
             try { localData = localCached ? JSON.parse(localCached) : null; } catch (e) { localData = null; }
 
+            const localTime = localData?.exportedAt || localData?.meta?.updatedAt || 0;
+            const remoteTime = gistData?.exportedAt || gistData?.meta?.updatedAt || 0;
+            if (localTime > remoteTime) {
+              // Local data is newer; skip remote overwrite entirely to protect local activities and edits
+              return;
+            }
             if (localData && Array.isArray(localData.activities) && localData.activities.length > 0) {
+              gistData.activities = localData.activities;
+            }
+            loadDataFromJson(gistData, { silent: true });
+            safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
 
               gistData.activities = localData.activities;
 
@@ -4080,6 +4098,11 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
       <div className="text-xs text-slate-400 flex items-center gap-1">
         <Info className="w-3.5 h-3.5"/>
         <span>评级阈值为罗盘内部管理规则，不代表行业标准。</span>
+      </div>
+
+      <div className="text-xs text-slate-400 flex items-center gap-1">
+        <Info className="w-3.5 h-3.5"/>
+        <span>活动配置已纳入罗盘总数据 JSON；导入/导出罗盘数据时将同步恢复活动配置，ROI 结果根据最新经营数据自动重新计算。</span>
       </div>
 
       {showForm && (
