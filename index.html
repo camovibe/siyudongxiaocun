@@ -939,15 +939,6 @@ function Dashboard(){
             }
             loadDataFromJson(gistData, { silent: true });
             safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
-
-              gistData.activities = localData.activities;
-
-            }
-
-            loadDataFromJson(gistData, { silent: true });
-
-            safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
-
           }
 
         })
