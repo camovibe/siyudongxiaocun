@@ -1213,12 +1213,12 @@ function Dashboard(){
 
             </div>
 
-            <button onClick={()=>setShowSkuManager(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Boxes className="w-3.5 h-3.5"/>SKU 维护</button>
-            <button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Settings className="w-3.5 h-3.5"/>设置密码</button>
-            <button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Download className="w-3.5 h-3.5"/>导出数据</button>
-            <button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>Gist 同步</button>
-            <input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>
-            <button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>导入数据</button>
+            {!isReadOnly && (<button onClick={()=>setShowSkuManager(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Boxes className="w-3.5 h-3.5"/>SKU 维护</button>)}
+            {!isReadOnly && (<button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Settings className="w-3.5 h-3.5"/>设置密码</button>)}
+            {!isReadOnly && (<button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Download className="w-3.5 h-3.5"/>导出数据</button>)}
+            {!isReadOnly && (<button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>Gist 同步</button>)}
+            {!isReadOnly && (<input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>)}
+            {!isReadOnly && (<button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>导入数据</button>)}
           </div>
 
         </div>
@@ -1306,10 +1306,10 @@ function Dashboard(){
               {sku && <span className="text-xs px-2 py-1 rounded-full" style={{background:CAT_COLOR[sku.cat]+'1a',color:CAT_COLOR[sku.cat]}}>{sku.cat}</span>}
 
               <div className="flex-1"/>
-              <button onClick={()=>setShowUploadSku(true)}
+              {!isReadOnly && (<button onClick={()=>setShowUploadSku(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 <Upload className="w-3.5 h-3.5"/>上传单品周数据
-              </button>
+              </button>)}
             </div>
 
 
@@ -1494,7 +1494,7 @@ function Dashboard(){
 
 
 
-        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={()=>setShowUploadChannel(true)} />}
+        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={()=>setShowUploadChannel(true)} isReadOnly={isReadOnly} />}
 
 
 
@@ -1506,11 +1506,11 @@ function Dashboard(){
 
 
 
-        {tab==='profit' && <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />}
+        {tab==='profit' && <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly} />}
 
 
 
-        {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />}
+        {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly} />}
 
         <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} skuMaster={skuMaster}/>
         <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} skuMaster={skuMaster}/>
@@ -1842,7 +1842,7 @@ function TotalTrendModal({data,mode,onClose}){
 
 
 
-function ChannelView({channelWeekly,onUpload}){
+function ChannelView({channelWeekly,onUpload,isReadOnly}){
 
   const [metric,setMetric] = useState('g');
 
@@ -2009,10 +2009,10 @@ function ChannelView({channelWeekly,onUpload}){
         })}
 
         <div className="flex-1"/>
-        <button onClick={onUpload}
+        {!isReadOnly && (<button onClick={onUpload}
           className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
           <Upload className="w-3.5 h-3.5"/>上传渠道周数据
-        </button>
+        </button>)}
         <div className="flex rounded-lg overflow-hidden border border-slate-200">
 
           {[['g','销售额'],['v','销售量']].map(([k,l])=>(
@@ -3395,7 +3395,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
 
 
-function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster}){
+function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly}){
 
   const [showUpload,setShowUpload]=useState(false);
 
@@ -3687,7 +3687,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster}){
 
               <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500"><th onClick={()=>cycleSort('name')} className="px-3 py-2 text-left font-medium cursor-pointer select-none">商品</th><th className="px-3 py-2 text-right font-medium">成本</th><th className="px-3 py-2 text-right font-medium">供货价</th><th className="px-3 py-2 text-right font-medium">单件毛利</th><th className="px-3 py-2 text-right font-medium">毛利率</th><th onClick={()=>cycleSort('wkSales')} className="px-3 py-2 text-right font-medium cursor-pointer select-none">本周销量</th><th className="px-3 py-2 text-right font-medium">本周毛利</th></tr><tr className="bg-amber-50/50"><th colSpan={7} className="px-2 py-1 text-left"><input value={flt.name||''} onChange={e=>setFlt(p=>({...p,name:e.target.value}))} className="flt" style={{maxWidth:'260px'}} placeholder="筛选商品（名称 / 编码）"/></th></tr></thead>
 
-              <tbody>{distFiltered.length===0?<tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-sm">无匹配数据</td></tr>:distFiltered.map(r=>{const isSel=r.code===profitSkuCode;return(<tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer ${isSel?'bg-indigo-50':''}`}><td className="px-3 py-2"><div className="font-medium">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}><NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/></td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}><NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/></td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td><td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.wkSales)}</td><td className="px-3 py-2 text-right tabular-nums font-semibold">{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td></tr>);})}</tbody>
+              <tbody>{distFiltered.length===0?<tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-sm">无匹配数据</td></tr>:distFiltered.map(r=>{const isSel=r.code===profitSkuCode;return(<tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer ${isSel?'bg-indigo-50':''}`}><td className="px-3 py-2"><div className="font-medium">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{Number(r.c||0).toFixed(2)}</span> : <NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/>}</td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}>{isReadOnly ? <span className="tabular-nums">¥{Number(r.sp||0).toFixed(2)}</span> : <NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/>}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td><td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.wkSales)}</td><td className="px-3 py-2 text-right tabular-nums font-semibold">{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td></tr>);})}</tbody>
 
             </table>
 
@@ -3901,7 +3901,7 @@ function SupplyDetailModal({ skuMaster, skuWeeks, supply, onClose }) {
 
 
 
-function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuMaster}){
+function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuMaster,isReadOnly}){
 
   const [showUpload,setShowUpload]=useState(false);
 
@@ -3959,7 +3959,7 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
 
             <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500"><th className="px-3 py-2 text-left font-medium">商品</th><th className="px-3 py-2 text-right font-medium">公域控价</th><th className="px-3 py-2 text-right font-medium">本周实际单价</th><th className="px-3 py-2 text-right font-medium">差额</th><th className="px-3 py-2 text-right font-medium">偏离</th><th className="px-3 py-2 text-left font-medium">状态</th></tr></thead>
 
-            <tbody>{rows.map(r=>(<tr key={r.code} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-3 py-2"><div className="font-medium">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td><td className="px-3 py-2 text-right"><NumInput value={r.cp} onChange={v=>setCtrl(p=>({...p,[r.code]:v}))}/></td><td className="px-3 py-2 text-right tabular-nums">¥{r.actual.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.diff>=0?'+':'')+r.diff.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.dpct>=0?'+':'')+r.dpct.toFixed(2)+'%'}</td><td className="px-3 py-2"><span onClick={()=>setSkuCode(r.code)} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer" style={{background:stColor[r.status]+'1a',color:stColor[r.status]}}>{r.status==='破价'&&<ShieldAlert className="w-3 h-3"/>}{r.status}{r.status==='无销量'&&<span className="ml-1 opacity-70">(库存{fmtNum(r.endInv)})</span>}</span></td></tr>))}</tbody>
+            <tbody>{rows.map(r=>(<tr key={r.code} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-3 py-2"><div className="font-medium">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td><td className="px-3 py-2 text-right">{isReadOnly ? <span className="tabular-nums">¥{Number(r.cp||0).toFixed(2)}</span> : <NumInput value={r.cp} onChange={v=>setCtrl(p=>({...p,[r.code]:v}))}/>}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.actual.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.diff>=0?'+':'')+r.diff.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.status==='无库存'||r.status==='无销量'?'#94a3b8':r.diff<0?'#dc2626':'#16a34a'}}>{r.status==='无库存'||r.status==='无销量'?r.status:(r.dpct>=0?'+':'')+r.dpct.toFixed(2)+'%'}</td><td className="px-3 py-2"><span onClick={()=>setSkuCode(r.code)} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium cursor-pointer" style={{background:stColor[r.status]+'1a',color:stColor[r.status]}}>{r.status==='破价'&&<ShieldAlert className="w-3 h-3"/>}{r.status}{r.status==='无销量'&&<span className="ml-1 opacity-70">(库存{fmtNum(r.endInv)})</span>}</span></td></tr>))}</tbody>
 
           </table>
 
