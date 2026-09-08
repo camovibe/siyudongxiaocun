@@ -514,33 +514,27 @@ function Sparkline({ data, dataKey, color, valueFormatter }) {
 
   const latest = data && data.length > 0 ? data[data.length - 1] : null;
 
-  const latestValue = latest ? latest[dataKey] : null;
-
+  const latestValue = latest && Number.isFinite(Number(latest[dataKey])) ? Number(latest[dataKey]) : null;
   const points = useMemo(() => {
-
     if (!data || data.length === 0) return '';
-
-    const vals = data.map(d => (typeof d[dataKey] === 'number' ? d[dataKey] : 0));
-
-    const min = Math.min(...vals), max = Math.max(...vals);
-
+    const rawVals = data.map(d => {
+      const v = Number(d?.[dataKey]);
+      return Number.isFinite(v) ? v : null;
+    });
+    const numericVals = rawVals.filter(v => v !== null);
+    if (numericVals.length === 0) return '';
+    const min = Math.min(...numericVals), max = Math.max(...numericVals);
     const range = (max - min) || 1;
-
     const W = 120, H = 30, pad = 3;
-
-    const n = vals.length;
-
-    return vals.map((v, i) => {
-
+    const n = rawVals.length;
+    return rawVals.map((v, i) => {
+      if (v === null) return null;
       const x = pad + (n > 1 ? (i / (n - 1)) * (W - 2 * pad) : 0);
-
       const y = H - pad - ((v - min) / range) * (H - 2 * pad);
-
       return x.toFixed(1) + ',' + y.toFixed(1);
-
-    }).join(' ');
-
+    }).filter(Boolean).join(' ');
   }, [data, dataKey]);
+
 
   return (
 
@@ -570,13 +564,13 @@ function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
 
   const metrics = [
 
-    { key: 'ratioNet', label: '库销比（净）', color: '#6366f1', fmt: v => v >= 99 ? '∞' : v.toFixed(2) },
+    { key: 'ratioNet', label: '库销比（净）', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : (v >= 99 ? '∞' : v.toFixed(2)) },
 
-    { key: 'turnover', label: '滚动周转率', color: '#0d9488', fmt: v => (v * 100).toFixed(2) + '%' },
+    { key: 'turnover', label: '滚动周转率', color: '#0d9488', fmt: v => !Number.isFinite(v) ? '—' : (v * 100).toFixed(2) + '%' },
 
-    { key: 'dailyAvg', label: '周均日销', color: '#6366f1', fmt: v => v.toFixed(2) },
+    { key: 'dailyAvg', label: '周均日销', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : v.toFixed(2) },
 
-    { key: 'avgPrice', label: '倒算均价', color: '#ea580c', fmt: v => '¥' + v.toFixed(2) },
+    { key: 'avgPrice', label: '倒算均价', color: '#ea580c', fmt: v => !Number.isFinite(v) ? '—' : '¥' + v.toFixed(2) },
 
   ];
 
@@ -672,7 +666,8 @@ function Dashboard(){
 
   const [skuCode,setSkuCode] = useState(SKUS[0].code);
 
-  const [unlocked,setUnlocked] = useState(true);
+  const [unlocked,setUnlocked] = useState(()=>{const saved=safeStorage.getItem('zhaofeng_password'); return !saved;});
+
 
   
 
@@ -823,7 +818,7 @@ function Dashboard(){
 
     setChannelWeekly(data.channelWeekly ? data.channelWeekly.map(r=>({...r,label:normalizePeriodLabel(r.label)})) : INITIAL_CHANNEL_WEEKLY);
 
-    setChannelSkuWeekly(data.channelSkuWeekly || {});
+    setChannelSkuWeekly(data.channelSkuWeekly !== undefined ? data.channelSkuWeekly : channelSkuWeekly);
 
     setCost(data.cost || Object.fromEntries(data.skuMaster.map(s=>[s.code,Math.round(s.price*0.3)])));
 
@@ -872,18 +867,26 @@ function Dashboard(){
 
 
   const tryLoadGist = (id) => {
-
     if (!id) return;
-
     fetch(`https://gist.githubusercontent.com/camovibe/${id}/raw/data.json?t=${Date.now()}`)
-
       .then(r => r.ok ? r.json() : null)
-
-      .then(gistData => { if (gistData && gistData.skuMaster && gistData.skuWeeks) loadDataFromJson(gistData); })
-
+      .then(gistData => {
+        if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+          const localCached = safeStorage.getItem('zhaofeng_data');
+          let localData = null;
+          try { localData = localCached ? JSON.parse(localCached) : null; } catch (e) { localData = null; }
+          const localTime = localData?.exportedAt || localData?.meta?.updatedAt || 0;
+          const remoteTime = gistData?.exportedAt || gistData?.meta?.updatedAt || 0;
+          if (localTime > remoteTime) return;
+          if (localData && Array.isArray(localData.activities) && localData.activities.length > 0) {
+            gistData.activities = localData.activities;
+          }
+          loadDataFromJson(gistData);
+        }
+      })
       .catch(() => {});
-
   };
+
 
 
 
@@ -922,26 +925,12 @@ function Dashboard(){
         .then(gistData => {
 
           if (gistData && gistData.skuMaster && gistData.skuWeeks) {
-
-            const localCached = safeStorage.getItem('zhaofeng_data');
-
-            let localData = null;
-
-            try { localData = localCached ? JSON.parse(localCached) : null; } catch (e) { localData = null; }
-
-            const localTime = localData?.exportedAt || localData?.meta?.updatedAt || 0;
-            const remoteTime = gistData?.exportedAt || gistData?.meta?.updatedAt || 0;
-            if (localTime > remoteTime) {
-              // Local data is newer; skip remote overwrite entirely to protect local activities and edits
-              return;
-            }
-            if (localData && Array.isArray(localData.activities) && localData.activities.length > 0) {
-              gistData.activities = localData.activities;
-            }
+            // 在线（http/https）环境下始终以 Gist 远端为最新数据源，不做 localTime 守卫与 activities 覆盖，
+            // 避免浏览器缓存的旧数据永久挡住新推送；本地 file:// 环境不会走到这段（上方已 return）。
             loadDataFromJson(gistData, { silent: true });
             safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
+            try { console.log('[sync] gist data applied, exportedAt=', gistData?.exportedAt); } catch(e) {}
           }
-
         })
 
         .catch(() => {});
@@ -972,7 +961,7 @@ function Dashboard(){
 
     safeStorage.setItem('zhaofeng_data', JSON.stringify(data));
 
-  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl]);
+  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities]);
 
 
 
@@ -1224,20 +1213,12 @@ function Dashboard(){
 
             </div>
 
-            {!isReadOnly && (
-              <>
             <button onClick={()=>setShowSkuManager(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Boxes className="w-3.5 h-3.5"/>SKU 维护</button>
             <button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Settings className="w-3.5 h-3.5"/>设置密码</button>
-              </>
-            )}
-            {!isReadOnly && (
-              <>
             <button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Download className="w-3.5 h-3.5"/>导出数据</button>
             <button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>Gist 同步</button>
             <input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>
             <button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>导入数据</button>
-              </>
-            )}
           </div>
 
         </div>
@@ -1264,7 +1245,7 @@ function Dashboard(){
 
             return (
 
-              <button key={t.id} onClick={()=>setTab(t.id)}
+              <button key={t.id} onClick={()=>{ if(t.lock && !unlocked){ const input=prompt('请输入密码解锁隐私模块'); const saved=safeStorage.getItem('zhaofeng_password'); if(input===saved){setUnlocked(true);setTab(t.id);}else{alert('密码错误');} }else{setTab(t.id);} }}
 
                 className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border font-medium transition-colors ${on?'bg-indigo-600 text-white border-indigo-600':'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
 
@@ -1325,12 +1306,10 @@ function Dashboard(){
               {sku && <span className="text-xs px-2 py-1 rounded-full" style={{background:CAT_COLOR[sku.cat]+'1a',color:CAT_COLOR[sku.cat]}}>{sku.cat}</span>}
 
               <div className="flex-1"/>
-              {!isReadOnly && (
               <button onClick={()=>setShowUploadSku(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 <Upload className="w-3.5 h-3.5"/>上传单品周数据
               </button>
-              )}
             </div>
 
 
@@ -1515,7 +1494,7 @@ function Dashboard(){
 
 
 
-        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={isReadOnly ? null : ()=>setShowUploadChannel(true)} />}
+        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={()=>setShowUploadChannel(true)} />}
 
 
 
@@ -1523,7 +1502,7 @@ function Dashboard(){
 
 
 
-        {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} activities={activities} setActivities={setActivities} isReadOnly={isReadOnly} />}
+        {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} channelSkuWeekly={channelSkuWeekly} channelWeekly={channelWeekly} activities={activities} setActivities={setActivities} isReadOnly={isReadOnly} />}
 
 
 
@@ -1533,7 +1512,8 @@ function Dashboard(){
 
         {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} />}
 
-
+        <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} skuMaster={skuMaster}/>
+        <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} skuMaster={skuMaster}/>
 
         <div className="flex items-start gap-2 text-xs text-slate-400 px-1 pb-4">
 
@@ -1552,6 +1532,9 @@ function Dashboard(){
         
 
         {showTotalTrend && <TotalTrendModal data={totalTrendData} mode={showTotalTrend} onClose={()=>setShowTotalTrend(null)}/>}
+        {showSkuManager && <SkuManagerModal skuMaster={skuMaster} setSkuMaster={setSkuMaster} regenerateAll={regenerateAll} onClose={()=>setShowSkuManager(false)}/>}
+        {showPassSetting && <PasswordSetting current={safeStorage.getItem('zhaofeng_password')} onSave={(val)=>{safeStorage.setItem('zhaofeng_password',val); setUnlocked(false);}} onClose={()=>setShowPassSetting(false)}/>}
+        {showGistSync && <GistSyncModal data={{skuMaster,skuWeeks,skuMetrics,channelWeekly,channelSkuWeekly,cost,supply,ctrl,PERIODS,activities,version:'v3',exportedAt:Date.now()}} onLoad={loadDataFromJson} onClose={()=>setShowGistSync(false)}/>}
 
         
 
@@ -1563,6 +1546,224 @@ function Dashboard(){
 
   );
 
+}
+
+function BatchUploadModal({open,onClose,mode,onApply,skuMaster}){
+  const isCost=mode==='cost', isPrice=mode==='price', isSku=mode==='sku', isChannel=mode==='channel';
+  const [step,setStep]=useState('idle');
+  const [fileName,setFileName]=useState('');
+  const [uploadMode,setUploadMode]=useState('overwrite');
+  const [parsed,setParsed]=useState([]);
+  const fileRef=useRef(null);
+
+  const parseCSV=(text)=>{
+    const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0) return [];
+    const first=lines[0];
+    const hasHeader=isSku?(first.includes('商品编码')||first.includes('code')):isChannel?(first.includes('渠道')||first.includes('channel')):isCost?(first.includes('商品编码')||first.includes('成本')||first.includes('cost')||first.includes('供货')):(first.includes('控价')||first.includes('price'));
+    const startIdx=hasHeader?1:0;
+    const rows=[];
+    for(let i=startIdx;i<lines.length;i++){
+      const line=lines[i].trim(); if(!line) continue;
+      const cols=[]; let cur=''; let inQuote=false;
+      for(let j=0;j<line.length;j++){
+        const ch=line[j];
+        if(ch==='"') inQuote=!inQuote;
+        else if(ch===',' && !inQuote){cols.push(cur.trim()); cur='';}
+        else cur+=ch;
+      }
+      cols.push(cur.trim()); rows.push(cols);
+    }
+    return rows;
+  };
+
+  const validateRows=(rawRows)=>{
+    if(isSku){
+      return rawRows.map(cols=>{
+        const [code,period,beginStr,inboundStr,salesStr,gmvStr,endStr]=cols;
+        const s=skuMaster.find(x=>x.code===code);
+        if(!s) return {code:code||'',name:'',period:period||'',begin:0,inbound:0,sales:0,gmv:0,end:0,status:'err',msg:'商品编码不存在'};
+        const begin=parseInt(beginStr.replace(/,/g,''))||0;
+        const inbound=parseInt(inboundStr.replace(/,/g,''))||0;
+        const sales=parseInt(salesStr.replace(/,/g,''))||0;
+        const gmv=parseInt(gmvStr.replace(/,/g,''))||0;
+        const end=parseInt(endStr.replace(/,/g,''))||0;
+        if([begin,inbound,sales,gmv,end].some(v=>isNaN(v))) return {code:s.code,name:s.name,period:period||'',begin,inbound,sales,gmv,end,status:'err',msg:'数值字段必须为数字'};
+        return {code:s.code,name:s.name,period:period||'',begin,inbound,sales,gmv,end,status:'ok',msg:''};
+      });
+    }
+    if(isChannel){
+      const firstRow=rawRows[0];
+      const isMatrix=firstRow&&firstRow.length>=6;
+      if(isMatrix){
+        const startRow=firstRow.some(c=>c&&(c.includes('商品编码')||c.includes('周期')||c.includes('code')))?1:0;
+        const headers=firstRow.map(h=>(h||'').trim());
+        const channels=[];
+        for(let i=0;i<headers.length;i++){
+          const col=headers[i];
+          if(col.endsWith('数量')){
+            const chName=col.slice(0,-2);
+            let gmvIdx=headers.findIndex((h,hi)=>hi>i&&h===chName+'金额');
+            if(gmvIdx<0) gmvIdx=headers.findIndex((h,hi)=>hi>i&&h===col+'金额');
+            if(gmvIdx>=0) channels.push({name:chName,volIdx:i,gmvIdx});
+          }
+        }
+        if(channels.length===0) return [{status:'err',msg:'未识别到渠道列。'}];
+        const results=[];
+        for(let i=startRow;i<rawRows.length;i++){
+          const row=rawRows[i]; if(!row||row.length===0) continue;
+          const period=(row[0]||'').trim();
+          const code=(row[1]||'').trim();
+          channels.forEach(ch=>{
+            const vol=parseInt((row[ch.volIdx]||'').replace(/,/g,''))||0;
+            const gmv=parseInt((row[ch.gmvIdx]||'').replace(/,/g,''))||0;
+            results.push({period,code,channel:ch.name,gmv,vol,status:'ok',msg:''});
+          });
+        }
+        if(results.length===0) return [{status:'err',msg:'未找到数据行。'}];
+        return results;
+      }
+      return rawRows.map(cols=>{
+        const [period,channel,gmvStr,volStr]=cols;
+        if(!CHANNELS.includes(channel)) return {period:period||'',channel:channel||'',gmv:0,vol:0,status:'err',msg:'渠道名称不存在'};
+        const gmv=parseInt((gmvStr||'').replace(/,/g,''))||0;
+        const vol=parseInt((volStr||'').replace(/,/g,''))||0;
+        if(isNaN(gmv)||isNaN(vol)) return {period:period||'',channel,gmv,vol,status:'err',msg:'数值字段必须为数字'};
+        return {period:period||'',code:'',channel,gmv,vol,status:'ok',msg:''};
+      });
+    }
+    const dataRows=rawRows.filter(cols=>{const code=(cols[0]||'').trim(); return code!=='商品编码'&&code!=='编码'&&code!=='code'&&code!=='Code'&&code!=='商品';});
+    return dataRows.map(cols=>{
+      if(isCost){
+        const [code,name,cStr,spStr,date]=cols;
+        const s=skuMaster.find(x=>x.code===code);
+        if(!s) return {code:code||'',name:name||'',c:0,sp:0,date:date||'',status:'err',msg:'商品编码不存在'};
+        const c=parseFloat(cStr.replace(/,/g,''))||0;
+        const sp=parseFloat(spStr.replace(/,/g,''))||0;
+        if(isNaN(c)||isNaN(sp)) return {code:s.code,name:s.name,c,sp,date:date||'',status:'err',msg:'成本/供货价必须为数字'};
+        return {code:s.code,name:s.name,c,sp,date:date||'',status:'ok',msg:''};
+      }
+      const [code,name,cpStr,date]=cols;
+      const s=skuMaster.find(x=>x.code===code);
+      if(!s) return {code:code||'',name:name||'',cp:0,date:date||'',status:'err',msg:'商品编码不存在'};
+      const cp=parseInt(cpStr.replace(/,/g,''))||0;
+      if(isNaN(cp)) return {code:s.code,name:s.name,cp,date:date||'',status:'err',msg:'控价必须为数字'};
+      return {code:s.code,name:s.name,cp,date:date||'',status:'ok',msg:''};
+    });
+  };
+
+  const handleFile=(file)=>{
+    if(!file) return;
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(ext==='xlsx'||ext==='xls'){alert('当前仅支持 .csv 格式上传。');return;}
+    setFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const text=e.target.result;
+      const rawRows=parseCSV(text);
+      const validated=validateRows(rawRows);
+      setParsed(validated); setStep('validated');
+    };
+    reader.readAsText(file);
+  };
+  const handleSelect=()=>{if(fileRef.current) fileRef.current.click();};
+  const handleDrop=(e)=>{e.preventDefault(); const files=e.dataTransfer.files; if(files.length>0) handleFile(files[0]);};
+  const handleDragOver=(e)=>{e.preventDefault();};
+  if(!open) return null;
+  const okRows=parsed.filter(r=>r.status==='ok');
+  const errCount=parsed.length-okRows.length;
+  const reset=()=>{setStep('idle');setFileName('');setUploadMode('overwrite');setParsed([]);};
+  const close=()=>{reset();onClose();};
+  const confirm=()=>{onApply(okRows,uploadMode);setStep('done');};
+  const titles={sku:'单品周数据上传',channel:'渠道周数据上传',cost:'成本 / 供货价批量上传',price:'公域控价批量上传'};
+  const title=titles[mode]||'批量上传';
+  const infos={sku:'批量导入各 SKU 的进销存数据。必填字段：商品编码、周期、期初库存、入库数、销售数量、GMV、期末库存。',channel:'批量导入各渠道周度数据。支持矩阵格式（推荐）和纵向格式。',cost:'批量导入各 SKU 的成本与供货价。',price:'批量导入各 SKU 的公域控价。'};
+  const info=infos[mode]||'';
+  const bgColors={sku:'bg-blue-50',channel:'bg-purple-50',cost:'bg-emerald-50',price:'bg-amber-50'};
+  const iconColors={sku:'text-blue-600',channel:'text-purple-600',cost:'text-emerald-600',price:'text-amber-600'};
+  const bgColor=bgColors[mode]||'bg-slate-50';
+  const iconColor=iconColors[mode]||'text-slate-600';
+
+  const downloadTemplate=()=>{
+    const BOM='\uFEFF'; let csv='';
+    if(mode==='sku'){csv='商品编码,周期,期初库存,入库数,销售数量,GMV,期末库存\n'; skuMaster.forEach(s=>{csv+=s.code+','+PERIODS[0].label+',100,0,50,6500,50\n';});}
+    else if(mode==='channel'){csv='周期,商品编码,商品名称'; CHANNELS.forEach(ch=>{csv+=','+ch+'数量,'+ch+'金额';}); csv+='\n'; skuMaster.slice(0,3).forEach(s=>{csv+=PERIODS[0].label+','+s.code+','+s.name; CHANNELS.forEach(ch=>{csv+=',50,5000';}); csv+='\n';});}
+    else if(mode==='cost'){csv='商品编码,商品名称,成本（元）,供货价（元）,生效日期\n'; skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+Math.round(s.price*0.3)+','+Math.round(s.price*0.55)+',2026-06-15\n';});}
+    else if(mode==='price'){csv='商品编码,商品名称,公域控价（元）,生效日期\n'; skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+Math.round(s.price*0.92)+',2026-06-15\n';});}
+    const blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='模板_'+title+'.csv'; a.click(); URL.revokeObjectURL(url);
+  };
+  const exportErrors=()=>{
+    const errRows=parsed.filter(r=>r.status==='err');
+    if(errRows.length===0) return;
+    const BOM='\uFEFF'; let csv='';
+    if(mode==='sku'){csv='商品编码,周期,期初库存,入库数,销售数量,GMV,期末库存,错误原因\n'; errRows.forEach(r=>{csv+=`${r.code||''},${r.period||''},${r.begin||0},${r.inbound||0},${r.sales||0},${r.gmv||0},${r.end||0},${r.msg||''}\n`;});}
+    else if(mode==='channel'){csv='周期,渠道,销售额,销售量,错误原因\n'; errRows.forEach(r=>{csv+=`${r.period||''},${r.channel||''},${r.gmv||0},${r.vol||0},${r.msg||''}\n`;});}
+    else if(mode==='cost'){csv='商品编码,商品名称,成本,供货价,生效日期,错误原因\n'; errRows.forEach(r=>{csv+=`${r.code||''},${r.name||''},${r.c||0},${r.sp||0},${r.date||''},${r.msg||''}\n`;});}
+    else if(mode==='price'){csv='商品编码,商品名称,公域控价,生效日期,错误原因\n'; errRows.forEach(r=>{csv+=`${r.code||''},${r.name||''},${r.cp||0},${r.date||''},${r.msg||''}\n`;});}
+    const blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='错误清单_'+title+'.csv'; a.click(); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100"><h3 className="font-bold flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-600"/>{title}</h3><button onClick={close} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button></div>
+        <div className="p-5 space-y-4">
+          <div className={`flex items-start gap-3 rounded-lg p-3 ${bgColor}`}><Info className={`w-4 h-4 mt-0.5 shrink-0 ${iconColor}`}/><p className="text-xs text-slate-600 leading-relaxed">{info}<span className="font-medium text-slate-700"> 导入方式：{uploadMode==='overwrite'?'覆盖全部历史数据':'仅追加最新一周'}。</span></p></div>
+          {step==='idle' && (
+            <div className="space-y-3">
+              <button onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Download className="w-4 h-4"/>下载导入模板</button>
+              <input type="file" ref={fileRef} accept=".csv,.xlsx,.xls" className="hidden" onChange={e=>{handleFile(e.target.files[0]);e.target.value='';}}/>
+              <div onClick={handleSelect} onDrop={handleDrop} onDragOver={handleDragOver} className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 py-10 hover:border-indigo-400 hover:bg-indigo-50 transition-colors cursor-pointer"><div className="rounded-full bg-slate-100 p-2.5 text-slate-500"><Upload className="w-5 h-5"/></div><p className="text-sm font-medium text-slate-700">点击选择文件 或 拖拽至此</p><p className="text-xs text-slate-400">支持 .csv（UTF-8），单次最多 5000 行</p></div>
+            </div>
+          )}
+          {step==='validated' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2"><div className="flex items-center gap-2 text-sm text-slate-700"><FileSpreadsheet className="w-4 h-4 text-emerald-600"/>{fileName}</div><button onClick={reset} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button></div>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-700"><FileSpreadsheet className="w-4 h-4"/>共读取 <b>{parsed.length}</b> 行</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-700"><CheckCircle2 className="w-4 h-4"/>校验通过 <b>{okRows.length}</b> 行</span>
+                <span className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600"><AlertCircle className="w-4 h-4"/>异常 <b>{errCount}</b> 行</span>
+                {errCount>0 && <button onClick={exportErrors} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"><Download className="w-3.5 h-3.5"/>导出错误清单</button>}
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-500"><tr>
+                    {mode==='sku' && (<><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">周期</th><th className="px-3 py-2 font-medium text-right">期初</th><th className="px-3 py-2 font-medium text-right">入库</th><th className="px-3 py-2 font-medium text-right">销售</th><th className="px-3 py-2 font-medium text-right">GMV</th><th className="px-3 py-2 font-medium text-right">期末</th><th className="px-3 py-2 font-medium">校验</th></>)}
+                    {mode==='channel' && (<><th className="px-3 py-2 font-medium">周期</th><th className="px-3 py-2 font-medium">商品编码</th><th className="px-3 py-2 font-medium">渠道</th><th className="px-3 py-2 font-medium text-right">销售额</th><th className="px-3 py-2 font-medium text-right">销售量</th><th className="px-3 py-2 font-medium">校验</th></>)}
+                    {mode==='cost' && (<><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">名称</th><th className="px-3 py-2 font-medium text-right">成本</th><th className="px-3 py-2 font-medium text-right">供货价</th><th className="px-3 py-2 font-medium">生效日期</th><th className="px-3 py-2 font-medium">校验</th></>)}
+                    {mode==='price' && (<><th className="px-3 py-2 font-medium">编码</th><th className="px-3 py-2 font-medium">名称</th><th className="px-3 py-2 font-medium text-right">公域控价</th><th className="px-3 py-2 font-medium">生效日期</th><th className="px-3 py-2 font-medium">校验</th></>)}
+                  </tr></thead>
+                  <tbody>
+                    {parsed.map((r,i)=>{
+                      const isErr=r.status==='err';
+                      const rowCls=`border-t border-slate-100 ${isErr?'bg-red-50':''}`;
+                      return (
+                        <tr key={i} className={rowCls}>
+                          {mode==='sku' && (<><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-500">{r.period}</td><td className="px-3 py-2 text-right tabular-nums">{r.begin}</td><td className="px-3 py-2 text-right tabular-nums">{r.inbound}</td><td className="px-3 py-2 text-right tabular-nums">{r.sales}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.gmv}</td><td className="px-3 py-2 text-right tabular-nums">{r.end}</td><td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>)}
+                          {mode==='channel' && (<><td className="px-3 py-2 text-slate-500">{r.period}</td><td className="px-3 py-2 font-mono text-slate-600">{r.code||'—'}</td><td className="px-3 py-2 text-slate-700">{r.channel}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.gmv}</td><td className="px-3 py-2 text-right tabular-nums">{r.vol}</td><td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>)}
+                          {mode==='cost' && (<><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-700">{r.name}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.c.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.sp.toFixed(2)}</td><td className="px-3 py-2 text-slate-500">{r.date||'—'}</td><td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>)}
+                          {mode==='price' && (<><td className="px-3 py-2 font-mono text-slate-600">{r.code}</td><td className="px-3 py-2 text-slate-700">{r.name}</td><td className="px-3 py-2 text-right tabular-nums">¥{r.cp}</td><td className="px-3 py-2 text-slate-500">{r.date||'—'}</td><td className="px-3 py-2">{r.status==='ok'?<span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>:<span className="inline-flex items-center gap-1 text-red-600"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>}</td></>)}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="text-slate-500">导入方式：</span><button onClick={()=>setUploadMode('overwrite')} className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${uploadMode==='overwrite'?'bg-indigo-100 text-indigo-700':'text-slate-600 hover:bg-slate-100'}`}>覆盖全部历史数据</button><button onClick={()=>setUploadMode('append')} className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${uploadMode==='append'?'bg-indigo-100 text-indigo-700':'text-slate-600 hover:bg-slate-100'}`}>仅追加最新一周</button></div>
+              <div className="flex justify-end gap-2"><button onClick={reset} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">取消</button><button onClick={confirm} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">确认导入 {okRows.length} 行</button></div>
+            </div>
+          )}
+          {step==='done' && (
+            <div className="flex flex-col items-center justify-center gap-2 py-8"><CheckCircle2 className="w-12 h-12 text-emerald-500"/><p className="text-lg font-semibold">导入成功</p><p className="text-sm text-slate-500">{okRows.length===0&&errCount===0?'未检测到可导入数据。':`已${uploadMode==='overwrite'?'覆盖更新':'追加最新'} ${okRows.length} 行，跳过异常 ${errCount} 行`}</p><button onClick={close} className="mt-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700">完成</button></div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TotalTrendModal({data,mode,onClose}){
@@ -1808,12 +2009,10 @@ function ChannelView({channelWeekly,onUpload}){
         })}
 
         <div className="flex-1"/>
-        {onUpload && (
         <button onClick={onUpload}
           className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
           <Upload className="w-3.5 h-3.5"/>上传渠道周数据
         </button>
-        )}
         <div className="flex rounded-lg overflow-hidden border border-slate-200">
 
           {[['g','销售额'],['v','销售量']].map(([k,l])=>(
@@ -2292,7 +2491,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
         const paired = prices.map((p,i)=>({p,q:sales[i]})).filter(o=>o.p>0 && o.q>0);
 
-        const corr = pearson(paired.map(o=>o.p),paired.map(o=>o.q));
+        const corr = paired.length < 6 ? null : pearson(paired.map(o=>o.p),paired.map(o=>o.q));
 
         const pa=analyze(prices), qa=analyze(sales);
 
@@ -2536,15 +2735,17 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
     const spike = s.qa.isSpike ? '（当周动销含短期波动）' : '';
 
+    if(s.corr === null) return {tone:'mute', text:'样本不足：无法判断价格与动销关系'};
+
     if(s.corr<=-0.3){
 
-      if(s.ratioNet!=null && s.ratioNet>3) return {tone:'bad', text:'价格敏感+库存积压：阶段性降价去库存'+spike};
+      if(s.ratioNet!=null && s.ratioNet>3) return {tone:'bad', text:'价格与动销呈负相关信号+库存积压：阶段性降价去库存'+spike};
 
-      return {tone:'good', text:'价格敏感、动销健康：守价即可'+spike};
+      return {tone:'good', text:'价格与动销呈负相关信号：守价即可'+spike};
 
     }
 
-    if(s.corr>=0.3) return {tone:'info', text:'价升量增（溢价属性）：可小幅提价试探'+spike};
+    if(s.corr>=0.3) return {tone:'info', text:'价格与动销呈正相关信号：可小幅提价试探'+spike};
 
     return {tone:'mute', text:'价格非主驱动：聚焦渠道/内容'+spike};
 
@@ -2758,7 +2959,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
         </div>
 
-        {!isReadOnly && !hasCSW && <p className="text-xs text-amber-600">提示：当前无 SKU×渠道 明细，"数据范围"仅"全渠道"可用。用<b>矩阵格式</b>上传渠道周数据（含"商品编码"列）后即可按单渠道拆分 ①②。</p>}
+        {!hasCSW && <p className="text-xs text-amber-600">提示：当前无 SKU×渠道 明细，"数据范围"仅"全渠道"可用。用<b>矩阵格式</b>上传渠道周数据（含"商品编码"列）后即可按单渠道拆分 ①②。</p>}
 
       </div>
 
@@ -2914,7 +3115,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
                 const adv = priceAdvice(s);
 
-                const cc = s.corr<=-0.3?'#dc2626':s.corr>=0.3?'#16a34a':'#64748b';
+                const cc = s.corr===null?'#94a3b8':s.corr<=-0.3?'#dc2626':s.corr>=0.3?'#16a34a':'#64748b';
 
                 return (
 
@@ -2922,7 +3123,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
                     <td className="px-3 py-2"><div className="font-medium text-slate-700">{s.name}</div><div className="text-xs text-slate-400">{s.code}</div></td>
 
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:cc}}>{s.corr>=0?'+':''}{s.corr}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color:cc}}>{s.corr===null?'—':(s.corr>=0?'+':'')+s.corr.toFixed(2)}</td>
 
                     <td className="px-3 py-2 text-right tabular-nums">¥{s.pa.baseline.toFixed(2)}</td>
 
@@ -2970,7 +3171,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
                       <div className="font-medium text-slate-700 text-sm">{s.name} <span className="text-xs text-slate-400">{s.code}</span></div>
 
-                      {s.lowStock ? <Chip tone="bad"><AlertTriangle className="w-3 h-3"/>低库存断货</Chip> : <Chip tone="warn">需求停销</Chip>}
+                      {s.lowStock ? <Chip tone="bad"><AlertTriangle className="w-3 h-3"/>疑似缺货导致停销</Chip> : <Chip tone="warn">疑似需求停止</Chip>}
 
                     </div>
 
@@ -2982,7 +3183,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
                         ? <span className="text-red-600">建议按断货前日均补货约 <b>{fmtNum(s.suggestRestock)}</b> 件（约{restockDays}天动销），优先恢复供货</span>
 
-                        : <span className="text-amber-600">尚有库存但零动销，核查价格/渠道/需求，勿盲目补货</span>}
+                        : <span className="text-amber-600">尚有库存但连续零动销，核查价格/渠道/需求，勿盲目补货</span>}
 
                     </div>
 
@@ -3484,7 +3685,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster}){
 
             <table className="w-full text-sm">
 
-              <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500"><th onClick={()=>cycleSort('name')} className="px-3 py-2 text-left font-medium cursor-pointer select-none">商品</th><th className="px-3 py-2 text-right font-medium">成本</th><th className="px-3 py-2 text-right font-medium">供货价</th><th className="px-3 py-2 text-right font-medium">单件毛利</th><th className="px-3 py-2 text-right font-medium">毛利率</th><th onClick={()=>cycleSort('wkSales')} className="px-3 py-2 text-right font-medium cursor-pointer select-none">本周销量</th><th className="px-3 py-2 text-right font-medium">本周毛利</th></tr><tr className="bg-amber-50/50"><th colSpan={7} className="px-2 py-1 text-left"><input value={flt.name||''} onChange={e=>setFlt(p=>({...p,name:e.target.value}))} className="flt" readOnly style={{maxWidth:'260px'}} placeholder="筛选商品（名称 / 编码）"/></th></tr></thead>
+              <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500"><th onClick={()=>cycleSort('name')} className="px-3 py-2 text-left font-medium cursor-pointer select-none">商品</th><th className="px-3 py-2 text-right font-medium">成本</th><th className="px-3 py-2 text-right font-medium">供货价</th><th className="px-3 py-2 text-right font-medium">单件毛利</th><th className="px-3 py-2 text-right font-medium">毛利率</th><th onClick={()=>cycleSort('wkSales')} className="px-3 py-2 text-right font-medium cursor-pointer select-none">本周销量</th><th className="px-3 py-2 text-right font-medium">本周毛利</th></tr><tr className="bg-amber-50/50"><th colSpan={7} className="px-2 py-1 text-left"><input value={flt.name||''} onChange={e=>setFlt(p=>({...p,name:e.target.value}))} className="flt" style={{maxWidth:'260px'}} placeholder="筛选商品（名称 / 编码）"/></th></tr></thead>
 
               <tbody>{distFiltered.length===0?<tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-sm">无匹配数据</td></tr>:distFiltered.map(r=>{const isSel=r.code===profitSkuCode;return(<tr key={r.code} onClick={()=>setProfitSkuCode(r.code)} className={`border-b border-slate-50 cursor-pointer ${isSel?'bg-indigo-50':''}`}><td className="px-3 py-2"><div className="font-medium">{r.name}</div><div className="text-xs text-slate-400">{r.code}</div></td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}><NumInput value={r.c} onChange={v=>setCost(p=>({...p,[r.code]:v}))}/></td><td className="px-3 py-2 text-right" onClick={e=>e.stopPropagation()}><NumInput value={r.sp} onChange={v=>setSupply(p=>({...p,[r.code]:v}))}/></td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.unit>=0?'#16a34a':'#dc2626'}}>{r.wkSales===0?'未售卖':'¥'+r.unit.toFixed(2)}</td><td className="px-3 py-2 text-right tabular-nums" style={{color:r.wkSales===0?'#94a3b8':r.margin>=30?'#16a34a':r.margin>=15?'#ca8a04':'#dc2626'}}>{r.wkSales===0?'未售卖':r.margin.toFixed(2)+'%'}</td><td className="px-3 py-2 text-right tabular-nums">{fmtNum(r.wkSales)}</td><td className="px-3 py-2 text-right tabular-nums font-semibold">{r.wkSales===0?'-':'¥'+fmtMoney(r.wkProfit)}</td></tr>);})}</tbody>
 
@@ -3782,6 +3983,19 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
 
 /* ================= Activity ROI Engine V3 ================= */
 
+const safePct = (v, digits = 1) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return (n * 100).toFixed(digits) + '%';
+};
+
+const fmtROI = (v, digits = 2) => {
+  if (v === Infinity) return '∞';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return n.toFixed(digits) + 'x';
+};
+
 const ROI_CONFIG = {
   baselinePeriods: 8,
   postPeriods: 4,
@@ -3800,11 +4014,12 @@ function avgArr(arr) {
   return sumArr(arr) / arr.length;
 }
 function safeDiv(a, b) {
-  if (!b || b === 0) return 0;
+  if (!b || b === 0) return Infinity;
   return a / b;
 }
 function r2(v, d = 2) {
   const n = Number(v);
+  if (n === Infinity) return Infinity;
   if (!Number.isFinite(n)) return 0;
   const decimals = Number.isFinite(Number(d)) ? Number(d) : 2;
   const factor = Math.pow(10, decimals);
@@ -3971,112 +4186,306 @@ function SkuPicker({ skuMaster, selectedCodes, onChange, mode }) {
   );
 }
 
-function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOnly }) {
+function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, activities, setActivities, isReadOnly }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const [fName, setFName] = useState('');
-  const [fStartWeek, setFStartWeek] = useState(() => PERIODS[Math.max(0, PERIODS.length - 1)]?.label || '');
+  const [fActivityChannel, setFActivityChannel] = useState('');
   const [fWindow, setFWindow] = useState(3);
+  const [fStartWeek, setFStartWeek] = useState(() => { const w = fWindow; const idx = Math.max(0, PERIODS.length - w); return PERIODS[idx]?.label || ''; });
+
   const [fBaseline, setFBaseline] = useState(8);
   const [fPost, setFPost] = useState(4);
   const [fInvestment, setFInvestment] = useState('');
   const [fSubsidy, setFSubsidy] = useState('');
   const [fSkuMode, setFSkuMode] = useState('all');
   const [fSkus, setFSkus] = useState([]);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
+
+  const hasChannelSkuData = Object.keys(channelSkuWeekly || {}).length > 0;
+
+  const channels = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(channelWeekly)) {
+      channelWeekly.forEach(r => Object.keys(r || {}).forEach(k => { if (k.startsWith('g_')) set.add(k.slice(2)); }));
+    }
+    if (channelSkuWeekly && typeof channelSkuWeekly === 'object') {
+      Object.values(channelSkuWeekly).forEach(codeData => {
+        if (codeData && typeof codeData === 'object') {
+          Object.keys(codeData).forEach(ch => { if (ch && ch !== 'ALL') set.add(ch); });
+        }
+      });
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [channelWeekly, channelSkuWeekly]);
 
   const getPeriodIdx = (label) => PERIODS.findIndex(p => p.label === label);
 
   const normalizeActivity = (act) => {
     const skuMode = act.skuMode || (act.skuCodes && act.skuCodes.length > 0 ? 'custom' : 'all');
-    return { ...act, skuMode, activityPriceSubsidy: Number(act.activityPriceSubsidy || 0) };
+    const activityChannel = act.activityChannel || 'ALL';
+    return { ...act, skuMode, activityChannel, activityPriceSubsidy: Number(act.activityPriceSubsidy || 0) };
   };
 
-  const getGmv = (code, idx) => Number(skuWeeks[code]?.[idx]?.gmv || 0);
+  const getActivityChannelMetricValue = (channel, code, idx) => {
+    if (!channel || channel === 'ALL') {
+      const v = skuWeeks?.[code]?.[idx]?.gmv;
+      return v === undefined ? undefined : Number(v);
+    }
+    const v = channelSkuWeekly?.[code]?.[channel]?.[idx]?.gmv;
+    return v === undefined ? undefined : Number(v);
+  };
+
+  const channelHasData = (channel, code, idx) => {
+    if (!channel || channel === 'ALL') return true;
+    return !!(channelSkuWeekly?.[code]?.[channel]?.[idx]);
+  };
+
+  const getGradeFromROI = (roi, observationComplete) => {
+    if (!observationComplete) return '—';
+    if (roi >= ROI_CONFIG.gradeThresholds.S) return 'S';
+    if (roi >= ROI_CONFIG.gradeThresholds.A) return 'A';
+    if (roi >= ROI_CONFIG.gradeThresholds.B) return 'B';
+    if (roi >= ROI_CONFIG.gradeThresholds.C) return 'C';
+    return 'D';
+  };
 
   const calculateForActivity = (rawAct) => {
     const act = normalizeActivity(rawAct);
     const startIdx = getPeriodIdx(act.startWeek);
-    if (startIdx < 0) return null;
+    if (startIdx < 0) return { error: `起始周 "${act.startWeek}" 不在时间轴中，当前可用周期：${PERIODS.map(p => p.label).join('、')}` };
+
+    const activityChannel = act.activityChannel || 'ALL';
+    const isAllChannels = !activityChannel || activityChannel === 'ALL';
 
     const validSkus = (act.skuMode === 'all' ? skuMaster.map(s => s.code) : (act.skuCodes || []))
       .filter(code => skuMaster.some(s => s.code === code));
     if (validSkus.length === 0) return { error: '未选择有效 SKU' };
 
-    const getVal = (idx) => validSkus.reduce((sum, code) => sum + getGmv(code, idx), 0);
-
-    const baselineSales = [];
-    for (let i = startIdx - act.baselinePeriods; i < startIdx; i++) {
-      if (i >= 0) baselineSales.push(getVal(i));
+    if (!isAllChannels && hasChannelSkuData) {
+      let hasAnyData = false;
+      for (const code of validSkus) {
+        for (let i = 0; i < PERIODS.length; i++) {
+          if (channelHasData(activityChannel, code, i)) { hasAnyData = true; break; }
+        }
+        if (hasAnyData) break;
+      }
+      if (!hasAnyData) {
+        return {
+          error: `该平台（${activityChannel}）暂无 SKU 周度终端纯销数据，无法计算该活动 ROI。请先上传该平台的 SKU×周度数据。`,
+          diagnosis: { startWeek: act.startWeek, startIdx, activityChannel, validSkuCount: validSkus.length, baselineAvailable: 0, baselineRequired: act.baselinePeriods, windowAvailable: 0, windowRequired: act.windowPeriods, postAvailable: 0, postRequired: act.postPeriods, windowWeeks: [], postWeeks: [] }
+        };
+      }
     }
 
-    const activityWeekSellOut = getVal(startIdx);
+    /* 周有效性判定：渠道周销数据为稀疏记录（仅当周有动销的SKU才有行）。
+       规则：该周只要≥1个SKU有记录即视为有效周（整周无任何记录=上传缺口，才算缺失）；
+       周内无记录的SKU视为当周未售货，贡献0（真实0销量与未动销在GMV口径下等价）。 */
+    const hasAnyRecordAt = (idx) =>
+      validSkus.some(code => {
+        if (!activityChannel || activityChannel === 'ALL') return skuWeeks?.[code]?.[idx] !== undefined;
+        return !!channelSkuWeekly?.[code]?.[activityChannel]?.[idx];
+      });
+
+    const getVal = (idx) => {
+      if (!hasAnyRecordAt(idx)) return null;
+      return validSkus.reduce((sum, code) => {
+        const v = getActivityChannelMetricValue(activityChannel, code, idx);
+        return Number.isFinite(v) ? sum + v : sum;
+      }, 0);
+    };
+
+    const actualBaselinePeriods = Math.min(act.baselinePeriods, startIdx);
+    const baselineSales = [];
+    for (let i = startIdx - 1; i >= 0 && baselineSales.length < actualBaselinePeriods; i--) {
+      const v = getVal(i);
+      if (v !== null) baselineSales.push(v);
+    }
+
+    const activityWeekSellOut = getVal(startIdx) || 0;
 
     let windowVal = 0;
-    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) {
-      windowVal += getVal(i);
-    }
+    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) { const wv = getVal(i); windowVal += (wv === null ? 0 : wv); }
 
     const postActivitySales = [];
+    for (let i = startIdx + act.windowPeriods; i < startIdx + act.windowPeriods + act.postPeriods && i < PERIODS.length; i++) { const pv = getVal(i); postActivitySales.push(pv === null ? 0 : pv); }
+
+    const diagnosis = {
+      startWeek: act.startWeek, startIdx,
+      activityChannel: isAllChannels ? 'ALL（全渠道兼容）' : activityChannel,
+      validSkuCount: validSkus.length,
+      baselineAvailable: baselineSales.length, baselineRequired: act.baselinePeriods,
+      actualBaselinePeriods,
+      windowAvailable: Math.min(act.windowPeriods, Math.max(0, PERIODS.length - startIdx)), windowRequired: act.windowPeriods,
+      postAvailable: postActivitySales.length, postRequired: act.postPeriods,
+      windowWeeks: [], postWeeks: []
+    };
+    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) {
+      const hasData = hasAnyRecordAt(i);
+      const wv = getVal(i);
+      const gmv = wv === null ? 0 : wv;
+      diagnosis.windowWeeks.push({ label: PERIODS[i]?.label, idx: i, gmv, hasData });
+    }
     for (let i = startIdx + act.windowPeriods; i < startIdx + act.windowPeriods + act.postPeriods && i < PERIODS.length; i++) {
-      postActivitySales.push(getVal(i));
+      const hasData = hasAnyRecordAt(i);
+      const pv = getVal(i);
+      const gmv = pv === null ? 0 : pv;
+      diagnosis.postWeeks.push({ label: PERIODS[i]?.label, idx: i, gmv, hasData });
     }
 
-    return calculateActivityROI({
-      baselineSales,
-      activityWeekSellOut,
-      activityWindowSellOut: windowVal,
-      windowPeriods: act.windowPeriods,
-      postActivitySales,
-      postPeriodsRequired: act.postPeriods,
-      brandInvestment: act.brandInvestment,
-      activityPriceSubsidy: act.activityPriceSubsidy
+    // Baseline 自适应降级：actualBaseline >= 2 才计算正常 Incremental ROI
+    if (baselineSales.length < 2) {
+      return {
+        error: `Baseline不足，无法计算可靠增量ROI（实际仅 ${baselineSales.length} 周历史数据）`,
+        status: 'baseline_insufficient',
+        baselineInfo: { configured: act.baselinePeriods, actual: baselineSales.length },
+        activityGmvRatio: (() => {
+          const inv = (Number(act.brandInvestment) || 0) + (Number(act.activityPriceSubsidy) || 0);
+          return inv > 0 ? windowVal / inv : null;
+        })(),
+        diagnosis: { ...diagnosis, dataCompleteness: 'baseline不足' }
+      };
+    }
+
+
+    const result = calculateActivityROI({
+      baselineSales, activityWeekSellOut, activityWindowSellOut: windowVal, windowPeriods: act.windowPeriods,
+      postActivitySales, postPeriodsRequired: act.postPeriods, brandInvestment: act.brandInvestment, activityPriceSubsidy: act.activityPriceSubsidy
     });
+
+    // Window Available < Window Required：窗口未满，Grade="—"，状态="观察中"，数据补齐后自动转正常定级
+    const wAvail = Math.min(act.windowPeriods, Math.max(0, PERIODS.length - startIdx));
+    if (wAvail < act.windowPeriods) {
+      if (result.evaluation) {
+        result.evaluation.grade = '—';
+        result.evaluation.label = '观察中';
+        result.evaluation.recommendation = `活动窗口未满（${wAvail}/${act.windowPeriods}周），暂不定级`;
+      }
+    }
+
+    // Post Available < Post Required：可计算当前ROI，但Grade="—"，状态="观察中"
+    if (postActivitySales.length < act.postPeriods) {
+      if (result.evaluation) {
+        result.evaluation.grade = '—';
+        result.evaluation.label = '观察中';
+        result.evaluation.recommendation = '活动后观察期未满，暂不定级';
+      }
+      if (result.postActivity) {
+        result.postActivity.observationComplete = false;
+      }
+    }
+
+
+    // 活动重叠风险诊断
+    const overlapWarnings = [];
+    activities.forEach(otherAct => {
+      if (otherAct.id === act.id) return;
+      const otherStart = getPeriodIdx(otherAct.startWeek);
+      if (otherStart < 0) return;
+      const otherEnd = otherStart + (otherAct.windowPeriods || 3);
+      const thisEnd = startIdx + (act.windowPeriods || 3);
+      const overlapStart = Math.max(startIdx, otherStart);
+      const overlapEnd = Math.min(thisEnd, otherEnd);
+      if (overlapEnd > overlapStart) {
+        const overlapWeeks = overlapEnd - overlapStart;
+        overlapWarnings.push(`⚠ 与「${otherAct.name}」活动窗口重叠${overlapWeeks}周，当前ROI可能存在归因重叠。`);
+      }
+    });
+    if (overlapWarnings.length > 0 && diagnosis) {
+      diagnosis.overlapWarnings = overlapWarnings;
+    }
+
+    return { ...result, diagnosis };
   };
+
+  const platformSummary = useMemo(() => {
+    const map = {};
+    activities.forEach(act => {
+      const ch = act.activityChannel || 'ALL';
+      const res = calculateForActivity(act);
+      if (res?.error || !res?.activityWindow) return;
+      if (!map[ch]) {
+        map[ch] = { channel: ch, channelLabel: ch === 'ALL' ? '全渠道兼容' : ch, count: 0, totalInvestment: 0, totalWindowIncremental: 0, totalEffectiveIncremental: 0 };
+      }
+      map[ch].count++;
+      map[ch].totalInvestment += (res.investment?.totalBrandInvestment || 0);
+      map[ch].totalWindowIncremental += (res.activityWindow?.windowIncrementalSellOut || 0);
+      map[ch].totalEffectiveIncremental += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
+    });
+    return Object.values(map).map(p => {
+      const roi = p.totalInvestment > 0 ? p.totalEffectiveIncremental / p.totalInvestment : 0;
+      const allObsComplete = activities.filter(a => (a.activityChannel || 'ALL') === p.channel).every(act => {
+      const res = calculateForActivity(act);
+      return res && !res.error && res.postActivity && res.postActivity.observationComplete;
+    });
+    return { ...p, roi, grade: getGradeFromROI(roi, allObsComplete) };
+    });
+  }, [activities, skuWeeks, channelSkuWeekly, skuMaster]);
+
+  const activityStats = useMemo(() => {
+    let completed = 0, observing = 0, validRoiCount = 0, totalInvestment = 0, totalEffective = 0, totalROI = 0;
+    activities.forEach(act => {
+      const res = calculateForActivity(act);
+      if (res?.error || !res?.return) return;
+      if (res.postActivity?.observationComplete) completed++; else observing++;
+      totalInvestment += (res.investment?.totalBrandInvestment || 0);
+      totalEffective += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
+      const roi = res.return?.incrementalSellOutROI;
+      if (Number.isFinite(roi)) { totalROI += roi; validRoiCount++; }
+    });
+    return { total: activities.length, completed, observing, avgROI: validRoiCount > 0 ? totalROI / validRoiCount : null, totalEffective, totalInvestment };
+  }, [activities, skuWeeks, channelSkuWeekly, skuMaster]);
 
   const resetForm = () => {
-    setFName(''); setFInvestment(''); setFSubsidy(''); setFSkus([]); setFSkuMode('all'); 
+    setFName(''); setFActivityChannel(''); setFInvestment(''); setFSubsidy(''); setFSkus([]); setFSkuMode('all'); setEditingId(null);
   };
 
+  const handleEdit = (act) => {
+    const normalized = normalizeActivity(act);
+    setEditingId(act.id);
+    setFName(act.name);
+    setFActivityChannel(normalized.activityChannel === 'ALL' ? '' : normalized.activityChannel);
+    setFStartWeek(act.startWeek);
+    setFWindow(act.windowPeriods);
+    setFBaseline(act.baselinePeriods);
+    setFPost(act.postPeriods);
+    setFInvestment(act.brandInvestment);
+    setFSubsidy(act.activityPriceSubsidy || 0);
+    setFSkuMode(normalized.skuMode);
+    setFSkus(normalized.skuMode === 'custom' ? [...(act.skuCodes || [])] : []);
+    setShowForm(true);
+  };
 
   const handleSave = () => {
     const investment = Number(fInvestment || 0);
     const subsidy = Number(fSubsidy || 0);
-    if (!fName || !fStartWeek || (investment + subsidy) <= 0) {
-      alert('请填写活动名称、起始周和品牌投入');
-      return;
-    }
+    if (!fName || !fStartWeek || (investment + subsidy) <= 0) { alert('请填写活动名称、起始周和品牌投入'); return; }
+    if (!editingId && hasChannelSkuData && !fActivityChannel) { alert('请选择活动平台'); return; }
+    const startIdx = PERIODS.findIndex(p => p.label === fStartWeek);
+    const w = Number(fWindow || 3);
+    if (startIdx < 0) { alert('起始周无效'); return; }
     const newAct = {
-      id: Date.now().toString(),
-      name: fName,
-      startWeek: fStartWeek,
-      windowPeriods: Number(fWindow) || 3,
-      baselinePeriods: Number(fBaseline) || 8,
-      postPeriods: Number(fPost) || 4,
-      brandInvestment: investment,
-      activityPriceSubsidy: subsidy,
-      skuMode: fSkuMode,
+      id: editingId || Date.now().toString(), name: fName,
+      activityChannel: fActivityChannel || 'ALL', startWeek: fStartWeek,
+      windowPeriods: Number(fWindow) || 3, baselinePeriods: Number(fBaseline) || 8, postPeriods: Number(fPost) || 4,
+      brandInvestment: investment, activityPriceSubsidy: subsidy, skuMode: fSkuMode,
       skuCodes: fSkuMode === 'all' ? [] : [...fSkus],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      createdAt: editingId ? (activities.find(a => a.id === editingId)?.createdAt || Date.now()) : Date.now(), updatedAt: Date.now()
     };
-    setActivities(prev => [...prev, newAct]);
-    setSelectedId(newAct.id);
-
-    setShowForm(false);
-    resetForm();
+    if (editingId) { setActivities(prev => prev.map(a => a.id === editingId ? newAct : a)); setSelectedId(editingId); }
+    else { setActivities(prev => [...prev, newAct]); setSelectedId(newAct.id); }
+    setEditingId(null); setShowForm(false); resetForm();
   };
 
-  const handleDelete = (id) => {
-    if (!confirm('确定删除该活动？')) return;
-    setActivities(prev => prev.filter(a => a.id !== id));
-    if (selectedId === id) setSelectedId(null);
-  };
+  const handleDelete = (id) => { if (!confirm('确定删除该活动？')) return; setActivities(prev => prev.filter(a => a.id !== id)); if (selectedId === id) setSelectedId(null); };
 
   const selectedActivity = activities.find(a => a.id === selectedId);
   const rawResult = selectedActivity ? calculateForActivity(selectedActivity) : null;
   const hasError = rawResult && rawResult.error;
   const result = hasError ? null : rawResult;
+  const diagnosis = rawResult?.diagnosis || null;
 
   const gradeColors = { S: '#16a34a', A: '#0d9488', B: '#ca8a04', C: '#ea580c', D: '#dc2626', '—': '#94a3b8' };
   const gradeBg = { S: 'bg-green-50 border-green-200', A: 'bg-teal-50 border-teal-200', B: 'bg-yellow-50 border-yellow-200', C: 'bg-orange-50 border-orange-200', D: 'bg-red-50 border-red-200', '—': 'bg-slate-50 border-slate-200' };
@@ -4086,12 +4495,12 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold text-slate-800">活动 ROI 分析</h2>
-          <span className="text-xs text-slate-500">基于终端纯销 GMV · 多 SKU 聚合</span>
+          <span className="text-xs text-slate-500">基于终端纯销 GMV · 多 SKU 聚合 · 平台维度</span>
         </div>
         {!isReadOnly && (
-          <button onClick={() => { setShowForm(!showForm); if (showForm) { resetForm(); } }} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
-            <Target className="w-4 h-4"/>{showForm ? '取消' : '新增活动'}
-          </button>
+        <button onClick={() => { setShowForm(!showForm); if (showForm) { resetForm(); } }} className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+          <Target className="w-4 h-4"/>{showForm ? '取消' : '新增活动'}
+        </button>
         )}
       </div>
 
@@ -4105,12 +4514,43 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
         <span>活动配置已纳入罗盘总数据 JSON；导入/导出罗盘数据时将同步恢复活动配置，ROI 结果根据最新经营数据自动重新计算。</span>
       </div>
 
+      {activityStats.total > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">活动总数</div><div className="text-xl font-bold text-slate-800">{activityStats.total}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">已完成观察</div><div className="text-xl font-bold text-green-600">{activityStats.completed}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">观察中</div><div className="text-xl font-bold text-amber-600">{activityStats.observing}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Incremental ROI</div><div className="text-xl font-bold text-indigo-600">{fmtROI(activityStats.avgROI)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">总有效增量纯销</div><div className="text-xl font-bold text-slate-800">¥{fmtMoney(activityStats.totalEffective)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">总品牌投入</div><div className="text-xl font-bold text-slate-800">¥{fmtMoney(activityStats.totalInvestment)}</div></div>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
-          <h3 className="font-semibold text-slate-700">{'录入活动'}</h3>
+          <h3 className="font-semibold text-slate-700">{editingId ? '编辑活动' : '录入活动'}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div><label className="text-xs text-slate-500 mb-1 block">活动名称</label><input type="text" value={fName} onChange={e => setFName(e.target.value)} placeholder="例如：618大促" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
-            <div><label className="text-xs text-slate-500 mb-1 block">活动起始周</label><select value={fStartWeek} onChange={e => setFStartWeek(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">{PERIODS.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}</option>)}</select></div>
+            {hasChannelSkuData && (
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">活动平台 {!editingId && <span className="text-red-500">*</span>}</label>
+                <select value={fActivityChannel} onChange={e => setFActivityChannel(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="">{editingId ? '保持当前（全渠道兼容）' : '请选择平台'}</option>
+                  {channels.map(ch => <option key={ch} value={ch}>{ch}</option>)}
+                </select>
+                {channels.length === 0 && <p className="text-xs text-amber-600 mt-1">暂无平台数据，请先上传渠道 SKU 周度数据</p>}
+              </div>
+            )}
+            <div><label className="text-xs text-slate-500 mb-1 block">活动起始周</label><select value={fStartWeek} onChange={e => setFStartWeek(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                  {PERIODS.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}</option>)}
+                </select>
+                {(() => {
+                  const w = Number(fWindow || 3);
+                  const idx = PERIODS.findIndex(p => p.label === fStartWeek);
+                  if (idx >= 0 && idx + w > PERIODS.length) {
+                    return <p className="text-xs text-amber-500 mt-1">窗口超出已有数据 {idx + w - PERIODS.length} 周：保存后活动按可用周数计算，标记「观察中 · 窗口未满」，数据补齐后自动转正常定级</p>;
+                  }
+                  return null;
+                })()}</div>
             <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => setFWindow(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">Baseline 周数</label><input type="number" min={2} max={12} value={fBaseline} onChange={e => setFBaseline(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">活动后观察（周）</label><input type="number" min={1} max={8} value={fPost} onChange={e => setFPost(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
@@ -4122,8 +4562,40 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
             <SkuPicker skuMaster={skuMaster} selectedCodes={fSkus} mode={fSkuMode} onChange={({mode, codes}) => { setFSkuMode(mode); setFSkus(codes); }}/>
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => { setShowForm(false); resetForm(); }} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">取消</button>
-            <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">{'保存并计算'}</button>
+            {editingId && <button onClick={() => { setShowForm(false); resetForm(); }} className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50">取消</button>}
+            <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">{editingId ? '保存修改' : '保存并计算'}</button>
+          </div>
+        </div>
+      )}
+
+      {platformSummary.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100"><h3 className="font-semibold">平台 ROI 分析</h3><p className="text-xs text-slate-400 mt-0.5">按活动平台聚合已录入活动</p></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500">
+                <th className="px-3 py-2 text-left font-medium">平台</th>
+                <th className="px-3 py-2 text-right font-medium">活动数</th>
+                <th className="px-3 py-2 text-right font-medium">品牌投入</th>
+                <th className="px-3 py-2 text-right font-medium">窗口增量纯销</th>
+                <th className="px-3 py-2 text-right font-medium">有效增量纯销</th>
+                <th className="px-3 py-2 text-right font-medium">Incremental ROI</th>
+                <th className="px-3 py-2 text-center font-medium">等级</th>
+              </tr></thead>
+              <tbody>
+                {platformSummary.map(p => (
+                  <tr key={p.channel} className="border-b border-slate-50">
+                    <td className="px-3 py-2 font-medium text-slate-700">{p.channelLabel}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.count}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(p.totalInvestment)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(p.totalWindowIncremental)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-green-600">¥{fmtMoney(p.totalEffectiveIncremental)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtROI(p.roi)}</td>
+                    <td className="px-3 py-2 text-center"><span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{background: (gradeColors[p.grade] || '#94a3b8') + '20', color: gradeColors[p.grade] || '#94a3b8'}}>{p.grade}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -4132,16 +4604,23 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
         <div className="flex flex-wrap gap-2">
           {activities.map(act => {
             const res = calculateForActivity(act);
-            const grade = res?.error ? '?' : (res?.evaluation?.grade || '?');
+            const roi = res?.return?.incrementalSellOutROI;
+            const roiStr = res?.status === 'baseline_insufficient' ? 'Baseline不足' : (res?.error ? '-' : fmtROI(roi, 1));
+            const grade = res?.error ? (res?.status === 'baseline_insufficient' ? '待评估' : '?') : (res?.evaluation?.grade || '?');
+            const skuCount = act.skuMode === 'all' ? skuMaster.length : (act.skuCodes || []).filter(c => skuMaster.some(s => s.code === c)).length;
+            const chLabel = act.activityChannel && act.activityChannel !== 'ALL' ? act.activityChannel : (act.activityChannel === 'ALL' ? '全渠道' : '');
             return (
               <button key={act.id} onClick={() => setSelectedId(act.id)} className={`inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border font-medium transition-colors ${selectedId === act.id ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
                 <span>{act.name}</span>
+                {chLabel && <span className="text-xs text-slate-400">{chLabel}</span>}
+                <span className="text-xs text-slate-400">{act.startWeek} · {skuCount} SKU</span>
+                <span className="text-xs text-slate-500">{roiStr}</span>
                 <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{background: (gradeColors[grade] || '#94a3b8') + '20', color: gradeColors[grade] || '#94a3b8'}}>{grade}</span>
                 {!isReadOnly && (
-                  <span onClick={(e) => { e.stopPropagation(); }} className="ml-1 text-slate-400 hover:text-indigo-500 cursor-pointer" title="编辑">✎</span>
-                )}
-                {!isReadOnly && (
-                  <span onClick={(e) => { e.stopPropagation(); handleDelete(act.id); }} className="text-slate-400 hover:text-red-500 cursor-pointer">×</span>
+                  <>
+                <span onClick={(e) => { e.stopPropagation(); handleEdit(act); }} className="ml-1 text-slate-400 hover:text-indigo-500 cursor-pointer" title="编辑">✎</span>
+                <span onClick={(e) => { e.stopPropagation(); handleDelete(act.id); }} className="text-slate-400 hover:text-red-500 cursor-pointer">×</span>
+                  </>
                 )}
               </button>
             );
@@ -4153,12 +4632,33 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center text-amber-700">
           <AlertTriangle className="w-8 h-8 mx-auto mb-2"/>
           <p className="font-medium">{rawResult.error}</p>
-          <p className="text-sm mt-1 text-amber-600">请检查活动 SKU 是否有效</p>
+          {rawResult.status === 'baseline_insufficient' && rawResult.activityGmvRatio !== null && rawResult.activityGmvRatio !== undefined && (
+            <p className="text-sm mt-2 text-slate-600">活动GMV投入比（非增量ROI）：<span className="font-bold text-amber-700">{Number(rawResult.activityGmvRatio).toFixed(2)}x</span></p>
+          )}
+          {rawResult.baselineInfo && (
+            <p className="text-xs mt-1 text-amber-500">Baseline 配置 {rawResult.baselineInfo.configured} 周，实际可用 {rawResult.baselineInfo.actual} 周</p>
+          )}
+          {diagnosis && diagnosis.activityChannel && diagnosis.activityChannel !== 'ALL（全渠道兼容）' && (
+            <p className="text-sm mt-1 text-amber-600">请先确认该平台的 SKU×周度数据已上传至「渠道分析」tab</p>
+          )}
         </div>
       )}
 
       {result && selectedActivity && (
         <div className="space-y-4">
+          <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span><span className="text-slate-500">活动平台：</span><span className="font-medium">{selectedActivity.activityChannel && selectedActivity.activityChannel !== 'ALL' ? selectedActivity.activityChannel : '全渠道兼容'}</span></span>
+              <span><span className="text-slate-500">参与 SKU：</span><span className="font-medium">{selectedActivity.skuMode === 'all' ? skuMaster.length + '个（全部）' : ((selectedActivity.skuCodes || []).filter(c => skuMaster.some(s => s.code === c)).length + '个')}</span></span>
+              <span><span className="text-slate-500">活动窗口：</span><span className="font-medium">{selectedActivity.windowPeriods}周</span></span>
+              <span><span className="text-slate-500">Baseline：</span><span className="font-medium">{result?.baselineInfo ? `${result.baselineInfo.actual}周（配置${result.baselineInfo.configured}周）` : (rawResult?.diagnosis?.actualBaselinePeriods !== undefined ? `${Math.min(selectedActivity.baselinePeriods, rawResult.diagnosis.actualBaselinePeriods)}周（配置${selectedActivity.baselinePeriods}周）` : selectedActivity.baselinePeriods + '周')}</span></span>
+              <span><span className="text-slate-500">活动后观察：</span><span className="font-medium">{selectedActivity.postPeriods}周</span></span>
+            </div>
+            {(!selectedActivity.activityChannel || selectedActivity.activityChannel === 'ALL') && (
+              <div className="text-xs text-amber-600 mt-1">该活动创建于平台维度升级前，当前按全渠道数据兼容计算；如需平台级 ROI，请编辑活动并选择活动平台。</div>
+            )}
+          </div>
+
           <div className={`rounded-xl border p-4 flex items-center justify-between flex-wrap gap-3 ${gradeBg[result.evaluation.grade] || 'bg-slate-50 border-slate-200'}`}>
             <div>
               <div className="text-2xl font-bold" style={{color: gradeColors[result.evaluation.grade] || '#94a3b8'}}>{result.evaluation.grade}级 · {result.evaluation.label}</div>
@@ -4169,14 +4669,14 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
             </div>
             <div className="text-right">
               <div className="text-xs text-slate-500">Incremental Sell-out ROI</div>
-              <div className="text-3xl font-bold text-slate-800">{result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI}x</div>
+              <div className="text-3xl font-bold text-slate-800">{fmtROI(result.return.incrementalSellOutROI)}</div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="窗口增量纯销" value={'¥' + fmtMoney(result.activityWindow.windowIncrementalSellOut)} sub={result.activityWindow.windowPeriods + '周窗口'}/>
-            <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#ea580c" label="有效增量纯销" value={'¥' + fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)} sub={'因子 ' + (result.effectiveIncremental.effectiveFactor * 100).toFixed(0) + '%'}/>
-            <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="Incremental ROI" value={(result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI) + 'x'}/>
+            <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#ea580c" label="有效增量纯销" value={'¥' + fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)} sub={'因子 ' + safePct(result.effectiveIncremental.effectiveFactor, 0)}/>
+            <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="Incremental ROI" value={fmtROI(result.return.incrementalSellOutROI)}/>
             <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#dc2626" label="增量成本率" value={result.return.incrementalCostRatePercent + '%'}/>
           </div>
 
@@ -4186,7 +4686,7 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
                 <div className="flex justify-between"><span className="text-slate-500">活动周实际纯销</span><span className="font-medium">¥{fmtMoney(result.activityWeek.activityWeekSellOut)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Baseline 周均纯销</span><span className="font-medium">¥{fmtMoney(result.activityWeek.activityWeekBaseline)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">活动周增量纯销</span><span className="font-medium text-green-600">¥{fmtMoney(result.activityWeek.activityWeekIncremental)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">增量率</span><span className="font-medium">{(result.activityWeek.activityWeekIncrementalRate * 100).toFixed(2)}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">增量率</span><span className="font-medium">{safePct(result.activityWeek.activityWeekIncrementalRate, 2)}</span></div>
               </div>
             </Card>
 
@@ -4206,7 +4706,7 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
                 <div className="flex justify-between"><span className="text-slate-500">活动后 Baseline 纯销</span><span className="font-medium">¥{fmtMoney(result.postActivity.postBaselineSellOut)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">活动后净增量</span><span className={`font-medium ${result.postActivity.postNetIncrementalSellOut >= 0 ? 'text-green-600' : 'text-red-500'}`}>{result.postActivity.postNetIncrementalSellOut >= 0 ? '+' : ''}¥{fmtMoney(Math.abs(result.postActivity.postNetIncrementalSellOut))}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">活动后周均增量</span><span className={`font-medium ${result.postActivity.postWeeklyIncremental >= 0 ? 'text-green-600' : 'text-red-500'}`}>{result.postActivity.postWeeklyIncremental >= 0 ? '+' : ''}¥{fmtMoney(Math.abs(result.postActivity.postWeeklyIncremental))}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">持续性系数</span><span className={`font-medium ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{(result.postActivity.persistenceRate * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">持续性系数</span><span className={`font-medium ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{safePct(result.postActivity.persistenceRate, 1)}</span></div>
                 {!result.postActivity.observationComplete && (
                   <div className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mt-1">观察期尚未完成，持续性数据可能不准确</div>
                 )}
@@ -4215,16 +4715,57 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
 
             <Card title="有效增量与 ROI" subtitle="核心结论">
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">有效因子（管理规则）</span><span className="font-medium">{(result.effectiveIncremental.effectiveFactor * 100).toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">有效因子（管理规则）</span><span className="font-medium">{safePct(result.effectiveIncremental.effectiveFactor, 1)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">有效增量纯销</span><span className="font-medium text-green-600 font-bold">¥{fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">品牌基础投入</span><span className="font-medium">¥{fmtMoney(result.investment.brandInvestment)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">活动价格补贴</span><span className="font-medium">¥{fmtMoney(result.investment.activityPriceSubsidy)}</span></div>
                 <div className="flex justify-between border-t border-slate-100 pt-1"><span className="text-slate-700 font-medium">品牌真实投入合计</span><span className="font-bold text-orange-600">¥{fmtMoney(result.investment.totalBrandInvestment)}</span></div>
-                <div className="flex justify-between border-t border-slate-100 pt-2 mt-1"><span className="text-slate-700 font-medium">Incremental ROI</span><span className="font-bold text-indigo-600 text-lg">{result.return.incrementalSellOutROI === Infinity ? '∞' : result.return.incrementalSellOutROI}x</span></div>
+                <div className="flex justify-between border-t border-slate-100 pt-2 mt-1"><span className="text-slate-700 font-medium">Incremental ROI</span><span className="font-bold text-indigo-600 text-lg">{fmtROI(result.return.incrementalSellOutROI)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-700 font-medium">增量成本率</span><span className="font-bold text-orange-600">{result.return.incrementalCostRatePercent}%</span></div>
               </div>
             </Card>
           </div>
+
+          {diagnosis && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+              <button onClick={() => setShowDiagnosis(!showDiagnosis)} className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Info className="w-4 h-4"/> 活动 ROI 数据诊断 {showDiagnosis ? '▲' : '▼'}
+              </button>
+              {showDiagnosis && (
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="text-slate-500">活动起始周：<span className="text-slate-700">{diagnosis.startWeek}</span></div>
+                    <div className="text-slate-500">起始周 Index：<span className="text-slate-700">{diagnosis.startIdx}</span></div>
+                    <div className="text-slate-500">活动平台：<span className="text-slate-700">{diagnosis.activityChannel}</span></div>
+                    <div className="text-slate-500">有效 SKU：<span className="text-slate-700">{diagnosis.validSkuCount}</span></div>
+                    <div className="text-slate-500">Baseline 可用周数：<span className="text-slate-700">{diagnosis.baselineAvailable}/{diagnosis.baselineRequired}</span></div>
+                    <div className="text-slate-500">活动窗口可用周数：<span className="text-slate-700">{diagnosis.windowAvailable}/{diagnosis.windowRequired}</span></div>
+                    <div className="text-slate-500">活动后可用周数：<span className="text-slate-700">{diagnosis.postAvailable}/{diagnosis.postRequired}</span></div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-600">活动窗口数据：</p>
+                    <div className="flex flex-wrap gap-1">
+                      {diagnosis.windowWeeks.map(w => (
+                        <span key={w.idx} className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-100">✓ {w.label} ¥{fmtMoney(w.gmv)}</span>
+                      ))}
+                      {diagnosis.windowWeeks.length === 0 && <span className="text-xs text-amber-600">暂无数据</span>}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-600">活动后数据：</p>
+                    <div className="flex flex-wrap gap-1">
+                      {diagnosis.postWeeks.map(w => (
+                        <span key={w.idx} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">✓ {w.label} ¥{fmtMoney(w.gmv)}</span>
+                      ))}
+                      {diagnosis.postWeeks.length === 0 && <span className="text-xs text-amber-600">暂无数据</span>}
+                    </div>
+                  </div>
+                  {hasError && <p className="text-xs text-red-600">❌ {rawResult.error}</p>}
+                  {!hasError && <p className="text-xs text-green-600">✓ 数据完整，可以计算 ROI</p>}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -4232,7 +4773,7 @@ function ActivityView({ skuWeeks, skuMaster, activities, setActivities, isReadOn
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400 text-sm">
           <Target className="w-12 h-12 mx-auto mb-3 text-slate-300"/>
           <p>暂无活动数据</p>
-          <p className="mt-1">暂无活动记录。活动数据由管理员维护，只读展示。</p>
+          <p className="mt-1">点击「新增活动」录入第一场活动，系统将自动计算 ROI</p>
         </div>
       )}
     </div>
@@ -4283,6 +4824,257 @@ function NumInput({value,onChange}){
 
   return <input type="number" step="0.01" value={value} onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))} className="w-24 text-right border border-slate-200 rounded-md px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400"/>;
 
+}
+
+function SkuManagerModal({ skuMaster, setSkuMaster, regenerateAll, onClose }) {
+  // 适配层：将当前Dashboard的调用方式转换为A版SkuManager的接口
+  const handleSave = (newRows) => {
+    regenerateAll(newRows);
+    onClose();
+  };
+  return <SkuManagerInner skuMaster={skuMaster} onSave={handleSave} onClose={onClose} />;
+}
+
+function SkuManagerInner({skuMaster,onSave,onClose}){
+  const [rows,setRows]=useState(()=>skuMaster.map(s=>({code:s.code,name:s.name,cat:s.cat,status:'ok',msg:''})));
+  const [err,setErr]=useState('');
+  const [csvInfo,setCsvInfo]=useState(null);
+  const fileRef=useRef(null);
+
+  const detectDelimiter=(text)=>{
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0)return ',';
+    const delimiters=[',',';','\t'];
+    let best=',';let max=0;
+    for(const d of delimiters){
+      const re=new RegExp(d==='\t'?'\\t':d.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');
+      const cnt=(lines[0].match(re)||[]).length;
+      if(cnt>max){max=cnt;best=d;}
+    }
+    return best;
+  };
+
+  const parseCSV=(text)=>{
+    text=text.replace(/^\uFEFF/,'');
+    const delimiter=detectDelimiter(text);
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length===0)return [];
+    const first=lines[0];
+    const hasHeader=first.includes('编码')||first.includes('code')||first.includes('商品')||first.includes('名称');
+    const startIdx=hasHeader?1:0;
+    const out=[];
+    for(let i=startIdx;i<lines.length;i++){
+      const line=lines[i].trim(); if(!line)continue;
+      const cols=[];let cur='';let inQuote=false;
+      for(let j=0;j<line.length;j++){
+        const ch=line[j];
+        if(ch==='"'){inQuote=!inQuote;}
+        else if(ch===delimiter&&!inQuote){cols.push(cur.trim());cur='';}
+        else{cur+=ch;}
+      }
+      cols.push(cur.trim());
+      out.push(cols);
+    }
+    return out;
+  };
+
+  const validateCsvRow=(cols)=>{
+    const [code,name,cat]=cols;
+    if(!code||!code.trim())return{code:'',name:'',cat:'',status:'err',msg:'编码不能为空'};
+    if(!name||!name.trim())return{code:code.trim(),name:'',cat:'',status:'err',msg:'名称不能为空'};
+    if(!CATS.find(c=>c.key===cat))return{code:code.trim(),name:name.trim(),cat,status:'err',msg:'品类不存在：'+cat};
+    return{code:code.trim(),name:name.trim(),cat,status:'ok',msg:''};
+  };
+
+  const applyCsvRows=(validated)=>{
+    const okRows=validated.filter(r=>r.status==='ok');
+    const errRows=validated.filter(r=>r.status==='err');
+    setRows(p=>{
+      let updated=[...p];
+      okRows.forEach(r=>{
+        const idx=updated.findIndex(x=>x.code===r.code);
+        if(idx>=0){updated[idx]={...r,status:'ok',msg:''};}
+        else{updated.push({...r,status:'ok',msg:''});}
+      });
+      errRows.forEach(r=>{
+        updated.push({...r});
+      });
+      return updated;
+    });
+    setCsvInfo({total:validated.length,ok:okRows.length,err:errRows.length});
+  };
+
+  const handleFile=(file)=>{
+    if(!file)return;
+    const ext=file.name.split('.').pop().toLowerCase();
+    if(ext!=='csv'){setErr('仅支持 .csv 格式');return;}
+    setErr('');
+    setCsvInfo(null);
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const buf=new Uint8Array(e.target.result);
+      let text;
+      try{
+        text=new TextDecoder('utf-8',{fatal:true}).decode(buf);
+      }catch(err){
+        try{
+          text=new TextDecoder('gbk').decode(buf);
+        }catch(err2){
+          setErr('文件编码无法识别（请用记事本打开→另存为→UTF-8）');
+          return;
+        }
+      }
+      const raw=parseCSV(text);
+      if(raw.length===0){
+        setErr('CSV 内容为空，请检查文件');
+        return;
+      }
+      const validated=raw.map(cols=>validateCsvRow(cols));
+      applyCsvRows(validated);
+    };
+    reader.onerror=()=>{setErr('文件读取失败');};
+    reader.readAsArrayBuffer(file);
+  };
+  const handleDrop=(e)=>{e.preventDefault();const files=e.dataTransfer.files;if(files.length>0)handleFile(files[0]);};
+  const handleDragOver=(e)=>{e.preventDefault();};
+  const handleSelect=()=>{if(fileRef.current)fileRef.current.click();};
+
+  const downloadTemplate=()=>{
+    const BOM='\uFEFF';
+    let csv='商品编码,名称,品类\n';
+    skuMaster.forEach(s=>{csv+=s.code+','+s.name+','+s.cat+'\n';});
+    const blob=new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='模板_SKU维护.csv';a.click();URL.revokeObjectURL(url);
+  };
+
+  const moveRow = (i, dir) => {
+    if ((dir === -1 && i === 0) || (dir === 1 && i === rows.length - 1)) return;
+    const newRows = [...rows];
+    [newRows[i], newRows[i + dir]] = [newRows[i + dir], newRows[i]];
+    setRows(newRows);
+  };
+  const addRow=()=>{
+    setRows(p=>[...p,{code:'',name:'',cat:CATS[0].key,status:'ok',msg:''}]);
+  };
+  const removeRow=(i)=>{setRows(p=>p.filter((_,idx)=>idx!==i));};
+  const updateRow=(i,k,v)=>{setRows(p=>{const n=[...p];n[i]={...n[i],[k]:v,status:'ok',msg:''};return n;});};
+  const validate=()=>{
+    const codes=new Set();
+    for(const r of rows){
+      if(r.status==='err')return '请先修正表格中标红的异常行';
+      if(!r.code.trim())return '编码不能为空';
+      if(codes.has(r.code.trim()))return '编码重复：'+r.code;
+      codes.add(r.code.trim());
+      if(!r.name.trim())return '名称不能为空';
+      if(!CATS.find(c=>c.key===r.cat))return '品类不存在：'+r.cat;
+    }
+    return '';
+  };
+  const submit=()=>{
+    const msg=validate();
+    if(msg){setErr(msg);return;}
+    setErr('');
+    /* 说明：新增/修改 SKU 会保留原 SKU 的 price/demand/profile，
+       仅在新增时以默认值兜底。 */
+    onSave(rows.map((r, i) => {
+      const old = skuMaster.find(s=>s.code===r.code.trim());
+      return {
+        code:r.code.trim(), name:r.name.trim(), cat:r.cat,
+        price: old?.price ?? 100,
+        demand: old?.demand ?? 200,
+        profile: old?.profile ?? 'healthy',
+        sortOrder: i,
+      };
+    }));
+    onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h3 className="font-bold flex items-center gap-2"><Boxes className="w-5 h-5 text-indigo-600"/>SKU 维护</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-slate-500">当前共 {rows.length} 个 SKU。添加、删除或修改后点击保存，看板数据将自动重新生成。</p>
+          {err && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+          {csvInfo && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              <CheckCircle2 className="w-4 h-4"/>
+              CSV 解析完成：覆盖/新增 {csvInfo.ok} 行，异常 {csvInfo.err} 行。
+              <button onClick={()=>setCsvInfo(null)} className="text-emerald-800 underline text-xs ml-2">清除</button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <Download className="w-3.5 h-3.5"/>下载导入模板
+            </button>
+            <input type="file" ref={fileRef} accept=".csv" className="hidden" onChange={e=>{handleFile(e.target.files[0]);e.target.value='';}}/>
+            <button onClick={handleSelect} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <Upload className="w-3.5 h-3.5"/>上传 CSV
+            </button>
+          </div>
+          <div onDrop={handleDrop} onDragOver={handleDragOver}
+            className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 py-6 hover:border-indigo-400 hover:bg-indigo-50 transition-colors cursor-pointer"
+            onClick={handleSelect}>
+            <p className="text-xs text-slate-500">或拖拽 CSV 文件到此处</p>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">编码</th>
+                  <th className="px-3 py-2 font-medium">名称</th>
+                  <th className="px-3 py-2 font-medium">品类</th>
+                  <th className="px-3 py-2 font-medium">校验</th>
+                  <th className="px-3 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r,i)=>{
+                  const isErr = r.status==='err';
+                  const isNew = !skuMaster.find(s=>s.code===r.code);
+                  const rowCls = `border-t border-slate-100 ${isErr?'bg-red-50':isNew?'bg-blue-50':''}`;
+                  return (
+                    <tr key={i} className={rowCls}>
+                      <td className="px-3 py-2"><input value={r.code} onChange={e=>updateRow(i,'code',e.target.value)} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm font-mono"/></td>
+                      <td className="px-3 py-2"><input value={r.name} onChange={e=>updateRow(i,'name',e.target.value)} className="w-48 border border-slate-200 rounded px-2 py-1 text-sm"/></td>
+                      <td className="px-3 py-2">
+                        <select value={r.cat} onChange={e=>updateRow(i,'cat',e.target.value)} className="border border-slate-200 rounded px-2 py-1 text-sm">
+                          {CATS.map(c=><option key={c.key} value={c.key}>{c.key}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        {isErr
+                          ? <span className="inline-flex items-center gap-1 text-red-600 text-xs"><AlertCircle className="w-3.5 h-3.5"/>{r.msg}</span>
+                          : <span className="inline-flex items-center gap-1 text-emerald-600 text-xs"><CheckCircle2 className="w-3.5 h-3.5"/>通过</span>
+                        }
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={()=>moveRow(i,-1)} disabled={i===0} className={`text-xs px-1.5 py-0.5 rounded border ${i===0?'text-slate-300 border-slate-100':'text-slate-500 border-slate-200 hover:bg-slate-100'}`}>↑</button>
+                          <button onClick={()=>moveRow(i,1)} disabled={i===rows.length-1} className={`text-xs px-1.5 py-0.5 rounded border ${i===rows.length-1?'text-slate-300 border-slate-100':'text-slate-500 border-slate-200 hover:bg-slate-100'}`}>↓</button>
+                          <button onClick={()=>removeRow(i)} className="text-red-400 hover:text-red-600 text-xs ml-1">删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={addRow} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            + 添加 SKU
+          </button>
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">取消</button>
+            <button onClick={submit} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">保存并重新生成数据</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PasswordSetting({current,onSave,onClose}){
