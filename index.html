@@ -1230,10 +1230,14 @@ function Dashboard(){
             <button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Settings className="w-3.5 h-3.5"/>设置密码</button>
               </>
             )}
+            {!isReadOnly && (
+              <>
             <button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Download className="w-3.5 h-3.5"/>导出数据</button>
             <button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>Gist 同步</button>
             <input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>
             <button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>导入数据</button>
+              </>
+            )}
           </div>
 
         </div>
@@ -1321,10 +1325,12 @@ function Dashboard(){
               {sku && <span className="text-xs px-2 py-1 rounded-full" style={{background:CAT_COLOR[sku.cat]+'1a',color:CAT_COLOR[sku.cat]}}>{sku.cat}</span>}
 
               <div className="flex-1"/>
+              {!isReadOnly && (
               <button onClick={()=>setShowUploadSku(true)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 <Upload className="w-3.5 h-3.5"/>上传单品周数据
               </button>
+              )}
             </div>
 
 
@@ -1509,7 +1515,7 @@ function Dashboard(){
 
 
 
-        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={()=>setShowUploadChannel(true)} />}
+        {tab==='channel' && <ChannelView channelWeekly={channelWeekly} onUpload={isReadOnly ? null : ()=>setShowUploadChannel(true)} />}
 
 
 
@@ -1802,10 +1808,12 @@ function ChannelView({channelWeekly,onUpload}){
         })}
 
         <div className="flex-1"/>
+        {onUpload && (
         <button onClick={onUpload}
           className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
           <Upload className="w-3.5 h-3.5"/>上传渠道周数据
         </button>
+        )}
         <div className="flex rounded-lg overflow-hidden border border-slate-200">
 
           {[['g','销售额'],['v','销售量']].map(([k,l])=>(
@@ -2750,7 +2758,7 @@ function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSk
 
         </div>
 
-        {!hasCSW && <p className="text-xs text-amber-600">提示：当前无 SKU×渠道 明细，"数据范围"仅"全渠道"可用。用<b>矩阵格式</b>上传渠道周数据（含"商品编码"列）后即可按单渠道拆分 ①②。</p>}
+        {!isReadOnly && !hasCSW && <p className="text-xs text-amber-600">提示：当前无 SKU×渠道 明细，"数据范围"仅"全渠道"可用。用<b>矩阵格式</b>上传渠道周数据（含"商品编码"列）后即可按单渠道拆分 ①②。</p>}
 
       </div>
 
