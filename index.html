@@ -1519,7 +1519,7 @@ function Dashboard(){
 
 
 
-        {tab==='insight' && <InsightView skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly}/>}
+        {tab==='insight' && <InsightView skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} isReadOnly={isReadOnly}/>}
 
 
 
@@ -2134,7 +2134,7 @@ function downloadFile(filename, content, mime){
 
 
 
-function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly }){
+function InsightView({ skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, isReadOnly }){
 
   const [win,setWin] = useState(3);
 
