@@ -10,7 +10,7 @@
 
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
-<!-- v3.1 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据仅从 Gist 拉取（本地可编辑版推送） · 基于 v3.1 Activity Economics 完整功能裁剪 -->
+<!-- v3.2 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据仅从 Gist 拉取（本地可编辑版推送） · 基于 v3.2 四层经营速览完整功能裁剪 -->
 
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -544,9 +544,11 @@ function Sparkline({ data, dataKey, color, valueFormatter }) {
     const W = 120, H = 30, pad = 3;
     const n = rawVals.length;
     return rawVals.map((v, i) => {
-      if (v === null) return null;
+      if (!Number.isFinite(v)) return null;
       const x = pad + (n > 1 ? (i / (n - 1)) * (W - 2 * pad) : 0);
       const y = H - pad - ((v - min) / range) * (H - 2 * pad);
+      // v3.2（规则二十二）：x/y 二次校验，杜绝 polyline points 出现 NaN
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
       return x.toFixed(1) + ',' + y.toFixed(1);
     }).filter(Boolean).join(' ');
   }, [data, dataKey]);
@@ -1533,6 +1535,7 @@ function Dashboard(){
 
 
         {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly} />}
+
 
         {/* 在线仅阅读版：BatchUploadModal / SkuManagerModal / PasswordSetting / GistSyncModal 等上传与编辑弹窗已物理移除 */}
         <div className="flex items-start gap-2 text-xs text-slate-400 px-1 pb-4">
@@ -4026,6 +4029,34 @@ const ROI_CONFIG = {
   gradeThresholds: { S: 5, A: 3, B: 2, C: 1 }
 };
 
+// v3.2（规则十五）：兆丰罗盘内部经营阈值，仅用于内部经营判断，不代表中国跨境保健品行业统一标准
+const ACTIVITY_ECONOMIC_CONFIG = {
+  brandIncrementalNetMargin: { loss: 0, weak: 0.05, acceptable: 0.10, good: 0.15 },
+  incrementalProfitInvestment: { loss: 0, low: 0.20, acceptable: 0.50, good: 1.00 },
+  distributorIncrementalNetMargin: { loss: 0, low: 0.02, acceptable: 0.05, good: 0.08 }
+};
+const ECON_TIER_LABELS = {
+  brandIncrementalNetMargin: ['亏损', '盈利很弱', '可接受', '良好', '优秀'],
+  incrementalProfitInvestment: ['亏损', '低效', '可接受', '良好', '优秀'],
+  distributorIncrementalNetMargin: ['亏损', '极低', '可接受', '良好', '优秀']
+};
+const ECON_TIER_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#0d9488', '#16a34a'];
+// 返回 { idx, label, color }；value 非有限数时返回 null（null-safe，规则二十一）
+function econTier(configKey, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const th = ACTIVITY_ECONOMIC_CONFIG[configKey];
+  if (!th) return null;
+  const cut1 = th.weak !== undefined ? th.weak : th.low;
+  let idx;
+  if (n < th.loss) idx = 0;
+  else if (n < cut1) idx = 1;
+  else if (n < th.acceptable) idx = 2;
+  else if (n < th.good) idx = 3;
+  else idx = 4;
+  return { idx, label: ECON_TIER_LABELS[configKey][idx], color: ECON_TIER_COLORS[idx] };
+}
+
 function sumArr(arr) {
   return (arr || []).reduce((total, value) => total + Number(value || 0), 0);
 }
@@ -4465,6 +4496,20 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
       diagnosis.postWeeks.push({ label: PERIODS[i]?.label, idx: i, gmv, hasData });
     }
 
+    // v3.2（规则二十三）：missing 诊断——收集各阶段内未动销/无记录的 SKU×周，
+    // 供 UI 展示「XX SKU 在 XX 周缺少数据」。稀疏上传语义下无行 = 未动销 = 真实 0，仅作诊断展示，不影响计算。
+    diagnosis.missingPeriods = [];
+    const collectMissing = (aggs, stage) => {
+      aggs.forEach(w => {
+        if (w && Array.isArray(w.missingSkus) && w.missingSkus.length > 0) {
+          diagnosis.missingPeriods.push({ stage, period: PERIODS[w.idx]?.label, missingSkus: w.missingSkus.slice() });
+        }
+      });
+    };
+    collectMissing(baselineWeekAggs, 'Baseline');
+    collectMissing(windowWeekAggs, 'Activity Window');
+    collectMissing(postWeekAggs, 'Post Observation');
+
     /* ================= Activity Economics（活动经营利润，规则五十四集中计算） =================
        经济链条：GNC品牌方 --供货价--> 托盘商 --终端成交价--> C端
        托盘商净利沿用系统 opRate；品牌净利 = 品牌毛利 - 品牌投入 - 消费者端价格补贴 - 托盘商返利 */
@@ -4506,6 +4551,10 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     const incBrandNet = canIncremental ? wBrandNet - blBrandNetW * winP : null;
     const incBrandNetRate = canIncremental ? marginOf(incBrandNet, wBrandRevenue) : null;
     const incDistNetRate = canIncremental ? marginOf(incDistEconNet, wGmv) : null;
+
+    // v3.2（规则二十/二十六）：Incremental Profit / Investment = 品牌增量净利 ÷ 品牌真实投入合计
+    // 与 Incremental ROI（新增终端纯销效率）并列，不互相替代；分母 ≤0 或增量不可算时为 null
+    const profitInvestment = (canIncremental && incBrandNet !== null && totalInvest > 0) ? incBrandNet / totalInvest : null;
 
     // Post Observation 经济（规则五十五）：投入只归属活动窗口，Post 不重复扣减（规则三十七）
     const pGmv = sumAgg(postWeekAggs, 'gmv'), pSales = sumAgg(postWeekAggs, 'sales');
@@ -4555,7 +4604,9 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         distGross: r2(postDistGross), distNet: r2(postDistNet),
         brandGross: r2(postBrandGross), brandNet: r2(postBrandNet),
         incrementalGmv: postIncGmv === null ? null : r2(postIncGmv)
-      }
+      },
+      // v3.2：增量利润投入比（品牌增量净利 / 品牌真实投入合计）
+      profitInvestment: profitInvestment === null ? null : r2(profitInvestment, 4)
     };
 
     // Economic Risk（规则四十二）：与 ROI Grade 并列存在，不覆盖（规则二十三）
@@ -4564,7 +4615,8 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     const postCompleteNow = postActivitySales.length >= act.postPeriods;
     const economicRisk = [];
     if (!canIncremental) economicRisk.push('baseline_insufficient');
-    if (wBrandNet < 0) economicRisk.push('brand_loss');
+    // v3.2（规则十八）：增量毛利为正但增量净利为负（未覆盖活动投入），同样标记 Brand Loss
+    if (wBrandNet < 0 || (canIncremental && incBrandGross > 0 && incBrandNet < 0)) economicRisk.push('brand_loss');
     if (!windowCompleteNow) economicRisk.push('window_incomplete');
     if (!postCompleteNow) economicRisk.push('observing');
     if (economicRisk.length === 0) economicRisk.push('normal');
@@ -4637,7 +4689,30 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     const quality = classifyQuality(roiVal, persistVal);
     const conclusion = buildConclusion({ roiVal, persistVal, brandNet: wBrandNet, distEconNet: wDistEconNet });
 
-    return { ...result, economics, economicRisk, quality, conclusion, diagnosis };
+    // v3.2（规则十八）：增量价值覆盖判断（可多条同时成立）
+    const coverageNotes = [];
+    if (canIncremental) {
+      if (incBrandGross > 0 && incBrandNet < 0) coverageNotes.push({ type: 'warn', text: '增量毛利为正，但未覆盖活动投入' });
+      if (incBrandNet >= 0) coverageNotes.push({ type: 'ok', text: '增量价值已覆盖活动投入' });
+      if (incBrandNet > 0 && profitInvestment !== null && profitInvestment >= 0.5) coverageNotes.push({ type: 'ok', text: '增量利润具备较好投入回报' });
+      if (profitInvestment !== null && profitInvestment >= 1) coverageNotes.push({ type: 'ok', text: '每投入 ¥1 活动成本，额外产生 ≥ ¥1 增量净利' });
+    }
+
+    // v3.2（规则二十七）：「怎么看这场活动？」经营解释（规则自动生成，可多条并列）
+    const interpretNotes = [];
+    if (canIncremental) {
+      if (incBrandNet < 0) interpretNotes.push('活动虽然产生了增量销售，但增量利润未覆盖品牌活动投入。');
+      if (incBrandNet >= 0 && profitInvestment !== null && profitInvestment >= 1) interpretNotes.push('活动新增利润已经覆盖全部活动投入，具备较强经济价值。');
+      const roiHigh = roiVal === Infinity || Number(roiVal) >= 1;
+      if (roiHigh && profitInvestment !== null && profitInvestment < 0.5) interpretNotes.push('销售效率较高，但利润转化效率偏低，需检查折扣、补贴、返利及产品毛利结构。');
+    }
+    const pNum = Number(persistVal);
+    if (Number.isFinite(pNum)) {
+      if (pNum >= 0) interpretNotes.push('活动结束后仍保持较强增量，具备较好的持续性。');
+      else interpretNotes.push('活动结束后增量快速衰减，可能主要依赖活动刺激。');
+    }
+
+    return { ...result, economics, economicRisk, quality, conclusion, coverageNotes, interpretNotes, diagnosis };
   };
 
   const platformSummary = useMemo(() => {
@@ -4666,6 +4741,11 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
 
   const activityStats = useMemo(() => {
     let completed = 0, observing = 0, validRoiCount = 0, totalInvestment = 0, totalEffective = 0, totalROI = 0;
+    // v3.2（规则二十）：增量/整体利润聚合；利润率一律 total profit / total revenue，禁止 average(margin)
+    let validPersistCount = 0, totalPersistence = 0;
+    let totalIncBrandGP = 0, totalIncBrandNP = 0, totalIncDistGP = 0, totalIncDistNP = 0;
+    let totalBrandGP = 0, totalBrandNP = 0, totalDistGP = 0, totalDistNP = 0;
+    const addIfFinite = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
     activities.forEach(act => {
       const res = calculateForActivity(act);
       if (res?.error || !res?.return) return;
@@ -4673,9 +4753,42 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
       totalInvestment += (res.investment?.totalBrandInvestment || 0);
       totalEffective += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
       const roi = res.return?.incrementalSellOutROI;
+      // ROI 平均值只统计有效 ROI：null / NaN / Infinity 一律不进入
       if (Number.isFinite(roi)) { totalROI += roi; validRoiCount++; }
+      const persist = Number(res.postActivity?.persistenceRate);
+      if (Number.isFinite(persist)) { totalPersistence += persist; validPersistCount++; }
+      const E = res.economics;
+      if (E) {
+        totalIncBrandGP += addIfFinite(E.brand?.incrementalGrossProfit);
+        totalIncBrandNP += addIfFinite(E.brand?.incrementalNetProfit);
+        totalIncDistGP += addIfFinite(E.distributor?.incrementalGrossProfit);
+        totalIncDistNP += addIfFinite(E.distributor?.incrementalNetProfit);
+        totalBrandGP += addIfFinite(E.brand?.grossProfit);
+        totalBrandNP += addIfFinite(E.brand?.netProfit);
+        totalDistGP += addIfFinite(E.distributor?.grossProfit);
+        totalDistNP += addIfFinite(E.distributor?.netProfit);
+      }
     });
-    return { total: activities.length, completed, observing, avgROI: validRoiCount > 0 ? totalROI / validRoiCount : null, totalEffective, totalInvestment };
+    // 增量利润投入比 = 总品牌增量净利 / 总品牌真实投入（总/总口径）
+    const incrementalProfitInvestment = totalInvestment > 0 ? totalIncBrandNP / totalInvestment : null;
+    return {
+      total: activities.length, completed, observing,
+      avgROI: validRoiCount > 0 ? totalROI / validRoiCount : null,
+      avgIncrementalROI: validRoiCount > 0 ? totalROI / validRoiCount : null,
+      avgPersistence: validPersistCount > 0 ? totalPersistence / validPersistCount : null,
+      totalEffective, totalInvestment,
+      totalBrandInvestment: totalInvestment,
+      totalBrandTrueInvestment: totalInvestment,
+      totalIncrementalBrandGrossProfit: totalIncBrandGP,
+      totalIncrementalBrandNetProfit: totalIncBrandNP,
+      totalIncrementalDistributorGrossProfit: totalIncDistGP,
+      totalIncrementalDistributorNetProfit: totalIncDistNP,
+      totalBrandGrossProfit: totalBrandGP,
+      totalBrandNetProfit: totalBrandNP,
+      totalDistributorGrossProfit: totalDistGP,
+      totalDistributorNetProfit: totalDistNP,
+      incrementalProfitInvestment
+    };
   }, [activities, skuWeeks, channelSkuWeekly, skuMaster, cost, supply, opRate]);
 
   // 经营质量矩阵数据（规则五十七）：仅 ROI 与 Persistence 均有限的活动进入；空数组安全（规则五十八）
@@ -4698,8 +4811,10 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         distGross: res.economics?.distributor?.grossProfit ?? null,
         distNet: res.economics?.distributor?.netProfit ?? null,
         distNetMargin: res.economics?.distributor?.netMargin ?? null,
+        incBrandGross: res.economics?.brand?.incrementalGrossProfit ?? null,
         incBrandNet: res.economics?.brand?.incrementalNetProfit ?? null,
         incDistNet: res.economics?.distributor?.incrementalNetProfit ?? null,
+        profitInvestment: res.economics?.profitInvestment ?? null,
         brandLoss: Number.isFinite(Number(res.economics?.brand?.netProfit)) ? res.economics.brand.netProfit < 0 : false,
         observing: !(res.postActivity?.observationComplete),
         economicRisk: res.economicRisk || ['normal'],
@@ -4805,6 +4920,20 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         </div>
       )}
 
+      {/* v3.2（规则二十/二十一）：增量价值聚合统计，全部 null-safe */}
+      {activityStats.total > 0 && (() => {
+        const tierPI = econTier('incrementalProfitInvestment', activityStats.incrementalProfitInvestment);
+        return (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量毛利合计 <span className="text-slate-300">vs Baseline</span></div><div className="text-xl font-bold text-slate-800">{fmtSignedMoney(activityStats.totalIncrementalBrandGrossProfit)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalBrandNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalBrandNetProfit)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">托盘商增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalDistributorNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalDistributorNetProfit)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">增量利润投入比（总/总）</div><div className="text-xl font-bold text-indigo-600">{activityStats.incrementalProfitInvestment === null ? '—' : safePct(activityStats.incrementalProfitInvestment, 1)}</div>{tierPI && <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{background: tierPI.color + '1a', color: tierPI.color}}>{tierPI.label}</span>}</div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Persistence</div><div className="text-xl font-bold text-slate-800">{safePct(activityStats.avgPersistence, 1)}</div></div>
+        </div>
+        );
+      })()}
+
       {showForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
           <h3 className="font-semibold text-slate-700">{editingId ? '编辑活动' : '录入活动'}</h3>
@@ -4821,7 +4950,16 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
               </div>
             )}
             <div><label className="text-xs text-slate-500 mb-1 block">活动起始周</label><select value={fStartWeek} onChange={e => setFStartWeek(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                  {PERIODS.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}</option>)}
+                  {(() => {
+                    // v3.2（规则二十四）：只允许选择能完整覆盖 Activity Window 的起始周；
+                    // 编辑历史活动时保留原起始周选项，不强制改写
+                    const w = Math.max(1, Number(fWindow) || 3);
+                    const validOpts = PERIODS.filter((p, i) => i + w <= PERIODS.length);
+                    const curIdx = PERIODS.findIndex(p => p.label === fStartWeek);
+                    const keepCurrent = !!editingId && curIdx >= 0 && !validOpts.some(p => p.label === fStartWeek);
+                    const opts = keepCurrent ? [...validOpts, PERIODS[curIdx]] : validOpts;
+                    return opts.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}{keepCurrent && p.label === fStartWeek ? '（当前·窗口未满）' : ''}</option>);
+                  })()}
                 </select>
                 {(() => {
                   const w = Number(fWindow || 3);
@@ -4831,7 +4969,18 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   }
                   return null;
                 })()}</div>
-            <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => setFWindow(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => {
+              const nw = Math.max(1, Number(e.target.value) || 1);
+              setFWindow(nw);
+              // v3.2（规则二十四）：窗口变化后，起始周可选范围动态变化；新建时自动校正到最近的可完整覆盖起始周
+              if (!editingId) {
+                const idx = PERIODS.findIndex(p => p.label === fStartWeek);
+                if (idx >= 0 && idx + nw > PERIODS.length) {
+                  const ni = Math.max(0, PERIODS.length - nw);
+                  setFStartWeek(PERIODS[ni]?.label || '');
+                }
+              }
+            }} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">Baseline 周数</label><input type="number" min={2} max={12} value={fBaseline} onChange={e => setFBaseline(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">活动后观察（周）</label><input type="number" min={1} max={8} value={fPost} onChange={e => setFPost(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">品牌基础投入（元）</label><input type="number" min={0} value={fInvestment} onChange={e => setFInvestment(e.target.value)} placeholder="现金+赠品+物料..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
@@ -4882,7 +5031,8 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
       )}
 
       {/* ================= 活动经营质量矩阵（规则二十四~二十七） ================= */}
-      {activities.length > 0 && (
+      {/* v3.2（TEST 01）：无活动时也渲染卡片并显示空态文案，不得白屏 */}
+      {(
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
             <div>
@@ -4962,8 +5112,10 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                       <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">托盘商毛利</span><span className="font-medium">{fmtSignedMoney(hovered.distGross)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">托盘商净利</span><span className="font-medium">{fmtSignedMoney(hovered.distNet)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">托盘商净利率</span><span className="font-medium">{safePct(hovered.distNetMargin, 1)}</span></div>
-                      <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">品牌增量净利</span><span className="font-medium">{fmtSignedMoney(hovered.incBrandNet)}</span></div>
+                      <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">品牌增量毛利</span><span className="font-medium">{fmtSignedMoney(hovered.incBrandGross)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">品牌增量净利</span><span className="font-medium">{fmtSignedMoney(hovered.incBrandNet)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">托盘商增量净利</span><span className="font-medium">{fmtSignedMoney(hovered.incDistNet)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">增量利润投入比</span><span className="font-medium">{hovered.profitInvestment === null || hovered.profitInvestment === undefined ? '—' : safePct(hovered.profitInvestment, 1)}</span></div>
                       <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">Risk Status</span><span className="font-medium" style={{color: hovered.brandLoss ? '#dc2626' : '#16a34a'}}>{hovered.economicRisk.map(r => RISK_META[r]?.label || r).join('、')}</span></div>
                       <div className="text-slate-400 pt-1">点击活动点可跳转到活动明细</div>
                     </>
@@ -5092,6 +5244,100 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">经营质量</div><div className="text-xl font-bold mt-1" style={{color: qm ? qm.color : '#94a3b8'}}>{qm ? qm.label : '—'}</div>{qm && <div className="text-xs text-slate-400 mt-1">{qm.desc}</div>}</div>
           </div>
           ); })()}
+
+          {/* ================= Activity Economics 四层经营速览（v3.2 规则十六~十八、二十六~二十七） ================= */}
+          {result.economics && (() => {
+            const E = result.economics;
+            const pi = E.profitInvestment;
+            const tierPI = econTier('incrementalProfitInvestment', pi);
+            const tierB = econTier('brandIncrementalNetMargin', E.brand.incrementalNetProfitRate);
+            const tierD = econTier('distributorIncrementalNetMargin', E.distributor.incrementalNetProfitRate);
+            const tierChip = (t) => t ? <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{background: t.color + '1a', color: t.color}}>{t.label}</span> : null;
+            const cell = (label, valueNode, tag) => (
+              <div className="bg-slate-50 rounded-lg p-3">
+                <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">{label}{tag && <span className="text-[10px] text-slate-400 border border-slate-200 rounded-full px-1.5 py-px">{tag}</span>}</div>
+                <div className="text-base font-bold text-slate-800 mt-0.5">{valueNode}</div>
+              </div>
+            );
+            const money = (v) => <span className={Number(v) < 0 ? 'text-red-600' : ''}>{fmtSignedMoney(v)}</span>;
+            return (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <h3 className="font-semibold">Activity Economics · 四层经营速览</h3>
+                <p className="text-xs text-slate-400 mt-0.5">整体经营 → 增量价值 → 投入效率 → 风险判断</p>
+              </div>
+
+              {/* 第一层：活动窗口整体经营 */}
+              <div className="px-4 pt-3">
+                <div className="text-xs font-semibold text-slate-500 mb-2">① 活动窗口整体经营 <span className="font-normal text-slate-400">Activity Window Total</span></div>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                  {cell('Terminal GMV', money(E.terminal.gmv), 'Activity Window Total')}
+                  {cell('Distributor GP', money(E.distributor.grossProfit), 'Activity Window Total')}
+                  {cell('Distributor NP', money(E.distributor.netProfit), 'Activity Window Total')}
+                  {cell('Brand GP', money(E.brand.grossProfit), 'Activity Window Total')}
+                  {cell('Brand NP', money(E.brand.netProfit), 'Activity Window Total')}
+                </div>
+              </div>
+
+              {/* 第二层：增量经营价值 */}
+              <div className="px-4 pt-3">
+                <div className="text-xs font-semibold text-slate-500 mb-2" title="增量指标 = Activity Window 实际结果 - Baseline 理论结果。">② 增量经营价值 <span className="font-normal text-slate-400">vs Baseline</span></div>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                  {cell('Incremental GMV', E.terminal.incrementalSellout === null ? '—' : money(E.terminal.incrementalSellout), 'vs Baseline')}
+                  {cell('Incremental Distributor GP', E.distributor.incrementalGrossProfit === null ? '—' : money(E.distributor.incrementalGrossProfit), 'vs Baseline')}
+                  {cell('Incremental Distributor NP', E.distributor.incrementalEconomicNetProfit === null ? '—' : money(E.distributor.incrementalEconomicNetProfit), 'vs Baseline')}
+                  {cell('Incremental Brand GP', E.brand.incrementalGrossProfit === null ? '—' : money(E.brand.incrementalGrossProfit), 'vs Baseline')}
+                  {cell('Incremental Brand NP', E.brand.incrementalNetProfit === null ? '—' : money(E.brand.incrementalNetProfit), 'vs Baseline')}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">增量指标 = Activity Window 实际结果 − Baseline 理论结果。</p>
+                {(result.coverageNotes || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(result.coverageNotes || []).map((n, i) => (
+                      <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${n.type === 'warn' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>{n.text}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 第三层：活动投入效率 */}
+              <div className="px-4 pt-3">
+                <div className="text-xs font-semibold text-slate-500 mb-2">③ 活动投入效率</div>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental ROI</div><div className="text-base font-bold text-indigo-600 mt-0.5">{fmtROI(result.return.incrementalSellOutROI)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental Profit / Investment</div><div className="text-base font-bold text-slate-800 mt-0.5">{pi === null ? '—' : safePct(pi, 1)}</div><div className="mt-1">{tierChip(tierPI)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Brand Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierB)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Distributor Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierD)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Persistence</div><div className={`text-base font-bold mt-0.5 ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{safePct(result.postActivity.persistenceRate, 1)}</div></div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">Incremental ROI 衡量新增终端纯销效率；Incremental Profit / Investment 衡量活动创造的真实增量利润效率，两者不能互相替代。以上为兆丰罗盘内部经营阈值，不代表中国跨境保健品行业统一标准。</p>
+              </div>
+
+              {/* 第四层：风险判断 */}
+              <div className="px-4 pt-3 pb-3">
+                <div className="text-xs font-semibold text-slate-500 mb-2">④ 风险判断</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500">ROI Grade</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{background: (gradeColors[result.evaluation.grade] || '#94a3b8') + '20', color: gradeColors[result.evaluation.grade] || '#94a3b8'}}>{result.evaluation.grade}级 · {result.evaluation.label}</span>
+                  <span className="text-xs text-slate-500 ml-2">Economic Risk</span>
+                  {(result.economicRisk || []).map(r => (<span key={r} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{background: (RISK_META[r]?.color || '#94a3b8') + '1a', color: RISK_META[r]?.color || '#94a3b8'}}>{RISK_META[r]?.label || r}</span>))}
+                </div>
+                {(result.economicRisk || []).includes('brand_loss') && result.evaluation.grade !== '—' && (
+                  <p className="text-[10px] text-slate-400 mt-1.5">ROI Grade 与 Economic Risk 为两个独立维度：销售效率高不代表利润健康，两者同时成立属合法结果。</p>
+                )}
+              </div>
+
+              {/* 怎么看这场活动（规则二十七） */}
+              {(result.interpretNotes || []).length > 0 && (
+                <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/60">
+                  <div className="text-xs font-semibold text-slate-500 mb-1.5">怎么看这场活动？</div>
+                  <ul className="space-y-1 text-sm text-slate-700 list-disc list-inside">
+                    {(result.interpretNotes || []).map((t, i) => <li key={i}>{t}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+            );
+          })()}
 
           {/* ================= 自动经营结论（规则二十八） ================= */}
           {result.conclusion && (
@@ -5271,6 +5517,19 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                       {diagnosis.postWeeks.length === 0 && <span className="text-xs text-amber-600">暂无数据</span>}
                     </div>
                   </div>
+                  {diagnosis.missingPeriods && diagnosis.missingPeriods.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-slate-600">SKU×周 缺失诊断（稀疏上传语义：无记录 = 当周未动销 = 真实 0，仅提示不扣减）：</p>
+                      <div className="flex flex-wrap gap-1">
+                        {diagnosis.missingPeriods.slice(0, 6).map((m, i) => (
+                          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
+                            {m.stage} · {m.period}：{m.missingSkus.slice(0, 3).map(code => skuMaster.find(s => s.code === code)?.name || code).join('、')}{m.missingSkus.length > 3 ? ` 等 ${m.missingSkus.length} 个 SKU` : ' SKU'} 无记录
+                          </span>
+                        ))}
+                        {diagnosis.missingPeriods.length > 6 && <span className="text-xs text-slate-400 self-center">… 共 {diagnosis.missingPeriods.length} 个周存在 SKU 无记录</span>}
+                      </div>
+                    </div>
+                  )}
                   {hasError && <p className="text-xs text-red-600">❌ {rawResult.error}</p>}
                   {!hasError && <p className="text-xs text-green-600">✓ 数据完整，可以计算 ROI</p>}
                 </div>
