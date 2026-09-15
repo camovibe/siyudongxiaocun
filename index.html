@@ -10,7 +10,7 @@
 
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
-<!-- v3.2 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据仅从 Gist 拉取（本地可编辑版推送） · 基于 v3.2 四层经营速览完整功能裁剪 -->
+<!-- v3.3 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据仅从 Gist 拉取（本地可编辑版推送） · 含 Gist 同步状态徽章（同步中/已同步/失败重试） · 基于 v3.3 四层经营速览完整功能裁剪 -->
 
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -696,6 +696,9 @@ function Dashboard(){
 
   const [hasRealData,setHasRealData] = useState(false);
 
+  // Gist 同步状态：idle=未开始 loading=拉取中 ok=已应用远端数据 error=失败（可点击重试）
+  const [syncInfo,setSyncInfo] = useState({ status:'idle', exportedAt:0, at:0 });
+
   
 
 
@@ -914,15 +917,12 @@ function Dashboard(){
 
 
 
-  useEffect(() => {
+  // 从 Gist 拉取最新数据并应用；提升到组件级以便「同步失败 · 重试」按钮复用。
+  // 在线（http/https）环境下始终以 Gist 远端为最新数据源，不做 localTime 守卫与 activities 覆盖，
+  // 避免浏览器缓存的旧数据永久挡住新推送；本地 file:// 环境不会走到这段。
+  const syncFromGist = () => {
 
-    if (typeof window === 'undefined') return;
-
-    const cached = safeStorage.getItem('zhaofeng_data');
-
-    if (cached) { try { loadDataFromJson(JSON.parse(cached), { silent: true }); } catch(e) {} }
-
-    if (window.location.protocol === 'file:') return;
+    if (typeof window === 'undefined' || window.location.protocol === 'file:') return;
 
     const gistId = gistIdFromUrl || DEFAULT_GIST_ID || safeStorage.getItem('zhaofeng_gist_id') || '';
 
@@ -940,30 +940,41 @@ function Dashboard(){
 
     }
 
-    const fetchLatest = () => {
+    setSyncInfo(s => ({ ...s, status:'loading' }));
 
-      fetch(`https://gist.githubusercontent.com/camovibe/${gistId}/raw/data.json?t=${Date.now()}`)
+    fetch(`https://gist.githubusercontent.com/camovibe/${gistId}/raw/data.json?t=${Date.now()}`)
 
-        .then(r => r.ok ? r.json() : null)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
 
-        .then(gistData => {
+      .then(gistData => {
 
-          if (gistData && gistData.skuMaster && gistData.skuWeeks) {
-            // 在线（http/https）环境下始终以 Gist 远端为最新数据源，不做 localTime 守卫与 activities 覆盖，
-            // 避免浏览器缓存的旧数据永久挡住新推送；本地 file:// 环境不会走到这段（上方已 return）。
-            loadDataFromJson(gistData, { silent: true });
-            safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
-            try { console.log('[sync] gist data applied, exportedAt=', gistData?.exportedAt); } catch(e) {}
-          }
-        })
+        if (gistData && gistData.skuMaster && gistData.skuWeeks) {
+          loadDataFromJson(gistData, { silent: true });
+          safeStorage.setItem('zhaofeng_data', JSON.stringify(gistData));
+          setSyncInfo({ status:'ok', exportedAt: gistData.exportedAt || 0, at: Date.now() });
+          try { console.log('[sync] gist data applied, exportedAt=', gistData?.exportedAt); } catch(e) {}
+        } else {
+          setSyncInfo(s => ({ ...s, status:'error' }));
+        }
+      })
 
-        .catch(() => {});
+      .catch(() => setSyncInfo(s => ({ ...s, status:'error' })));
 
-    };
+  };
 
-    fetchLatest();
+  useEffect(() => {
 
-    const onFocus = () => { if (document.visibilityState === 'visible') fetchLatest(); };
+    if (typeof window === 'undefined') return;
+
+    const cached = safeStorage.getItem('zhaofeng_data');
+
+    if (cached) { try { loadDataFromJson(JSON.parse(cached), { silent: true }); } catch(e) {} }
+
+    if (window.location.protocol === 'file:') return;
+
+    syncFromGist();
+
+    const onFocus = () => { if (document.visibilityState === 'visible') syncFromGist(); };
 
     document.addEventListener('visibilitychange', onFocus);
 
@@ -1224,6 +1235,20 @@ function Dashboard(){
             <h1 className="text-xl sm:text-2xl font-bold">兆丰渠道周转 · 全维看板</h1>
 
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hasRealData?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}`}>{hasRealData?'真实数据':'演示数据'}</span>
+
+            {typeof window !== 'undefined' && window.location.protocol !== 'file:' && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-medium ${syncInfo.status==='ok'?'bg-sky-100 text-sky-700':syncInfo.status==='error'?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-500'}`}
+                title={syncInfo.exportedAt ? ('Gist 数据推送时间：' + new Date(syncInfo.exportedAt).toLocaleString('zh-CN')) : 'Gist 数据同步状态'}>
+                {syncInfo.status==='loading' && 'Gist 同步中…'}
+                {syncInfo.status==='ok' && `已同步 · 数据截至 ${PERIODS[PERIODS.length-1]?.label || '-'} · 推送于 ${new Date(syncInfo.exportedAt || syncInfo.at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`}
+                {syncInfo.status==='error' && 'Gist 同步失败'}
+                {syncInfo.status==='idle' && '等待 Gist 同步'}
+              </span>
+            )}
+            {syncInfo.status==='error' && typeof window !== 'undefined' && window.location.protocol !== 'file:' && (
+              <button onClick={syncFromGist} className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-600 text-white hover:bg-rose-700 transition-colors">重试</button>
+            )}
 
           </div>
 
