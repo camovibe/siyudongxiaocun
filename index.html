@@ -4579,7 +4579,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     const incBrandNetRate = canIncremental ? marginOf(incBrandNet, wBrandRevenue) : null;
     const incDistNetRate = canIncremental ? marginOf(incDistEconNet, wGmv) : null;
 
-    // v3.2（规则二十/二十六）：Incremental Profit / Investment = 品牌增量净利 ÷ 品牌真实投入合计
+    // v3.2（规则二十/二十六）：Incremental Net Profit / Investment = 品牌增量净利 ÷ 品牌真实投入合计
     // 与 Incremental ROI（新增终端纯销效率）并列，不互相替代；分母 ≤0 或增量不可算时为 null
     const profitInvestment = (canIncremental && incBrandNet !== null && totalInvest > 0) ? incBrandNet / totalInvest : null;
 
@@ -4632,7 +4632,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         brandGross: r2(postBrandGross), brandNet: r2(postBrandNet),
         incrementalGmv: postIncGmv === null ? null : r2(postIncGmv)
       },
-      // v3.2：增量利润投入比（品牌增量净利 / 品牌真实投入合计）
+      // v3.2：增量净利润投入比（品牌增量净利 / 品牌真实投入合计）
       profitInvestment: profitInvestment === null ? null : r2(profitInvestment, 4)
     };
 
@@ -4796,7 +4796,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         totalDistNP += addIfFinite(E.distributor?.netProfit);
       }
     });
-    // 增量利润投入比 = 总品牌增量净利 / 总品牌真实投入（总/总口径）
+    // 增量净利润投入比 = 总品牌增量净利 / 总品牌真实投入（总/总口径）
     const incrementalProfitInvestment = totalInvestment > 0 ? totalIncBrandNP / totalInvestment : null;
     return {
       total: activities.length, completed, observing,
@@ -4955,7 +4955,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量毛利合计 <span className="text-slate-300">vs Baseline</span></div><div className="text-xl font-bold text-slate-800">{fmtSignedMoney(activityStats.totalIncrementalBrandGrossProfit)}</div></div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalBrandNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalBrandNetProfit)}</div></div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">托盘商增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalDistributorNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalDistributorNetProfit)}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">增量利润投入比（总/总）</div><div className="text-xl font-bold text-indigo-600">{activityStats.incrementalProfitInvestment === null ? '—' : safePct(activityStats.incrementalProfitInvestment, 1)}</div>{tierPI && <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{background: tierPI.color + '1a', color: tierPI.color}}>{tierPI.label}</span>}</div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">增量净利润投入比（总/总）</div><div className="text-xl font-bold text-indigo-600">{activityStats.incrementalProfitInvestment === null ? '—' : safePct(activityStats.incrementalProfitInvestment, 1)}</div>{tierPI && <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{background: tierPI.color + '1a', color: tierPI.color}}>{tierPI.label}</span>}</div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Persistence</div><div className="text-xl font-bold text-slate-800">{safePct(activityStats.avgPersistence, 1)}</div></div>
         </div>
         );
@@ -5142,7 +5142,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                       <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">品牌增量毛利</span><span className="font-medium">{fmtSignedMoney(hovered.incBrandGross)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">品牌增量净利</span><span className="font-medium">{fmtSignedMoney(hovered.incBrandNet)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">托盘商增量净利</span><span className="font-medium">{fmtSignedMoney(hovered.incDistNet)}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">增量利润投入比</span><span className="font-medium">{hovered.profitInvestment === null || hovered.profitInvestment === undefined ? '—' : safePct(hovered.profitInvestment, 1)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">增量净利润投入比</span><span className="font-medium">{hovered.profitInvestment === null || hovered.profitInvestment === undefined ? '—' : safePct(hovered.profitInvestment, 1)}</span></div>
                       <div className="border-t border-slate-200 pt-1.5 flex justify-between"><span className="text-slate-500">Risk Status</span><span className="font-medium" style={{color: hovered.brandLoss ? '#dc2626' : '#16a34a'}}>{hovered.economicRisk.map(r => RISK_META[r]?.label || r).join('、')}</span></div>
                       <div className="text-slate-400 pt-1">点击活动点可跳转到活动明细</div>
                     </>
@@ -5331,12 +5331,12 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                 <div className="text-xs font-semibold text-slate-500 mb-2">③ 活动投入效率</div>
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental ROI</div><div className="text-base font-bold text-indigo-600 mt-0.5">{fmtROI(result.return.incrementalSellOutROI)}</div></div>
-                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental Profit / Investment</div><div className="text-base font-bold text-slate-800 mt-0.5">{pi === null ? '—' : safePct(pi, 1)}</div><div className="mt-1">{tierChip(tierPI)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental Net Profit / Investment</div><div className="text-base font-bold text-slate-800 mt-0.5">{pi === null ? '—' : safePct(pi, 1)}</div><div className="mt-1">{tierChip(tierPI)}</div></div>
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Brand Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierB)}</div></div>
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Distributor Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierD)}</div></div>
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Persistence</div><div className={`text-base font-bold mt-0.5 ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{safePct(result.postActivity.persistenceRate, 1)}</div></div>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1.5">Incremental ROI 衡量新增终端纯销效率；Incremental Profit / Investment 衡量活动创造的真实增量利润效率，两者不能互相替代。以上为兆丰罗盘内部经营阈值，不代表中国跨境保健品行业统一标准。</p>
+                <p className="text-[10px] text-slate-400 mt-1.5">Incremental ROI 衡量新增终端纯销效率；Incremental Net Profit / Investment 衡量活动创造的真实增量净利润效率，两者不能互相替代。以上为兆丰罗盘内部经营阈值，不代表中国跨境保健品行业统一标准。</p>
               </div>
 
               {/* 第四层：风险判断 */}
