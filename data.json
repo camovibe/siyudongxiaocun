@@ -191089,7 +191089,7 @@
       "windowPeriods": 3,
       "baselinePeriods": 8,
       "postPeriods": 4,
-      "brandInvestment": 100000,
+      "brandInvestment": 70000,
       "consumerPriceSubsidy": 0,
       "distributorRebate": 0,
       "activityPriceSubsidy": 0,
@@ -191133,7 +191133,7 @@
         "490052"
       ],
       "createdAt": 1788867808602,
-      "updatedAt": 1788925704447
+      "updatedAt": 1789548900461
     },
     {
       "id": "1788868255130",
@@ -191194,5 +191194,5 @@
   ],
   "opRate": 56,
   "version": "v3",
-  "exportedAt": 1789468271114
+  "exportedAt": 1789551472123
 }
