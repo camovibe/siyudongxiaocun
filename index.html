@@ -1572,6 +1572,9 @@ function Dashboard(){
 
     hydratedRef.current = true;
 
+    // v3.8.1：恢复上一次导入的撤销快照（如有），刷新/重开后「撤销导入」仍可用
+    try { const _u = JSON.parse(safeStorage.getItem('zhaofeng_import_undo') || 'null'); if (_u && _u.snapshot) setImportUndo(_u); } catch(e) {}
+
     if (!isOnline) return;
 
     syncFromGist();
@@ -1640,9 +1643,13 @@ useEffect(() => {
 
       if (!res.ok) return res;
 
-      setImportUndo({ label: '单品周数据导入（' + (meta.fileName || '未命名文件') + '）',
+      const _undo = { label: '单品周数据导入（' + (meta.fileName || '未命名文件') + '）',
 
-        snapshot: { periods: PERIODS.map(p => ({...p})), skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, dataCoverage } });
+        snapshot: { periods: PERIODS.map(p => ({...p})), skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, dataCoverage } };
+
+      setImportUndo(_undo);
+
+      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify(_undo)); // v3.8.1：撤销快照仅本机持久化，不随 Gist 同步
 
       commitPeriodsInPlace(res.periods);
 
@@ -1690,9 +1697,13 @@ useEffect(() => {
 
       if (!res.ok) return res;
 
-      setImportUndo({ label: '渠道周数据导入（' + (meta.fileName || '未命名文件') + '）',
+      const _undo = { label: '渠道周数据导入（' + (meta.fileName || '未命名文件') + '）',
 
-        snapshot: { periods: PERIODS.map(p => ({...p})), skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, dataCoverage } });
+        snapshot: { periods: PERIODS.map(p => ({...p})), skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, dataCoverage } };
+
+      setImportUndo(_undo);
+
+      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify(_undo));
 
       commitPeriodsInPlace(res.periods);
 
@@ -1754,6 +1765,8 @@ useEffect(() => {
     setDataCoverage(s.dataCoverage);
 
     setImportUndo(null);
+
+    safeStorage.removeItem('zhaofeng_import_undo');
 
   };
 
