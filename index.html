@@ -10,7 +10,8 @@
 
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
-<!-- v3.5 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 基于 v3.5 完整功能裁剪 -->
+<!-- v3.6 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · 基于 v3.6 完整功能裁剪 -->
+<!-- 附 v3.6 规则明细 · 活动分析定向重构：① 新增可持久化 dataCoverage 覆盖元数据（complete/partial/unknown + coveredSkuCodes + missingMeansZero + batchId），上传即盖章、随导出/Gist/本地存储贯通，旧数据一律 unknown 不自动盖章；② 统一 baseline/window/post 周对象（gmv/sales 分别判完整、missingSkus/missingFields/missingPrices），缺失≠0，未盖章缺失行不计为 0；Baseline 返回实际使用与跳过周期；窗口区分日历未满与数据缺失，未满只做已观察周同口径暂估；Post 缺失周不按 0 计入；③ ROI 与利润数据依赖分离——缺成本/供价对应侧利润返回 null+原因，不以 0 或估算价代替，品牌缺成本不连带隐藏托盘商利润；④ 数学边界——safeDiv 零分母返回 null 不再 Infinity，r2 不再把 null/NaN 压成 0；新增有符号净增量GMV；零基线 Lift=null；投入≤0 ROI=null/Grade=—；无正增量 ROI=0 且成本率=null；无 Post persistence=null + 基础因子 0.5 暂估 ROI 标记 provisional；⑤ 风险状态多标签拆分（brand_total_loss/brand_incremental_loss/window_incomplete/window_data_missing/post_data_missing/observing/baseline_insufficient/baseline_zero/price_missing/coverage_unknown/attribution_overlap/investment_not_applicable/no_positive_increment）；activityStats 互斥主状态 completed/observing/insufficient/invalid 之和=total，Baseline不足活动投入仍计入全部已录入投入，利润合计无样本为 null，每个聚合显示纳入/排除活动数；⑥ 最终结论门控（窗口完整+Baseline可用+Post完成+完整性确认+利润可靠），不满足只给暂估/待补数据；持续性文案 null/0/>0/<0 四态分明；⑦ 「1x投入回本线」正名「1x增量销售效率参考线（非利润回本线）」，增量净利率补公式 tooltip（品牌=增量贡献净额/供货测算收入，托盘商=增量经济净额/终端GMV），托盘商 含返利/不含返利 字段与标题统一；⑧ 归因重叠=时间×渠道×SKU 三项同时重叠才成立（ALL 与任意渠道相交），污染 Baseline/Post 先提示不分摊，合计改名活动口径合计可能重复归因；⑨ 诊断按周真实状态展示（完整/明确零销量/部分缺失/完整性未知/未到观察期），整周缺失入 missingPeriods，删除无条件绿勾；⑩ activityResultMap useMemo 单次计算，汇总/统计/矩阵/按钮/详情同源读取；⑪ 稀疏假设测算结果标记 reliability=assumed + 紫色横幅，不进最终评级/质量矩阵/正式汇总 -->
 
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -807,6 +808,9 @@ function Dashboard(){
 
   const [activities, setActivities] = useState([]);
 
+  // v3.6（规则一）：数据覆盖元数据——上传时盖章；旧数据无元数据 = unknown，不自动盖章 complete
+  const [dataCoverage, setDataCoverage] = useState({ skuWeeks: {}, channelSkuWeekly: {} });
+
   // 托盘商运营成本率：原 ProfitView 内部 state，提升至 Dashboard，供 Activity Economics 沿用同一口径
   const [opRate, setOpRate] = useState(12);
 
@@ -832,7 +836,7 @@ function Dashboard(){
 
   const exportData = () => {
 
-    const data = {skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, version:'v3', exportedAt:Date.now()};
+    const data = {skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, version:'v3', exportedAt:Date.now()};
 
     const json = JSON.stringify(data, null, 2);
 
@@ -927,6 +931,11 @@ function Dashboard(){
     if(!data.skuMaster.find(s=>s.code===skuCode)) setSkuCode(data.skuMaster[0]?.code || '');
 
     if (Array.isArray(data.activities)) setActivities(data.activities.map(normalizeImportedActivity).filter(Boolean));
+
+    // v3.6：覆盖元数据随数据包恢复；旧数据包没有 → unknown（空表），不自动盖章
+    setDataCoverage(data.dataCoverage && typeof data.dataCoverage === 'object'
+      ? { skuWeeks: data.dataCoverage.skuWeeks || {}, channelSkuWeekly: data.dataCoverage.channelSkuWeekly || {} }
+      : { skuWeeks: {}, channelSkuWeekly: {} });
 
     const _opRateImport = toMetricNumber(data.opRate);
     if (_opRateImport !== null && _opRateImport >= 0 && _opRateImport <= 90) setOpRate(_opRateImport);
@@ -1068,11 +1077,11 @@ function Dashboard(){
 
     if (!hasRealData) return;
 
-    const data = { skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, version:'v3', exportedAt:Date.now() };
+    const data = { skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, version:'v3', exportedAt:Date.now() };
 
     safeStorage.setItem('zhaofeng_data', JSON.stringify(data));
 
-  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities, opRate]);
+  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities, opRate, dataCoverage]);
 
 
 
@@ -1179,6 +1188,17 @@ function Dashboard(){
       });
 
       setSkuWeeks(newWeeks); setSkuMetrics(newMetrics); setHasRealData(true);
+
+      // v3.6（规则一）：上传即盖章——本次上传的周期按当前 SKU 主数据范围标记 complete + missingMeansZero，
+      // 文件中未出现的 SKU 视为当周未动销（真实 0）；未上传的历史周保持 unknown，不自动盖章
+      setDataCoverage(prev => {
+        const next = { skuWeeks: { ...(prev?.skuWeeks || {}) }, channelSkuWeekly: { ...(prev?.channelSkuWeekly || {}) } };
+        const batchId = 'up-' + Date.now();
+        const covered = skuMaster.map(s => s.code);
+        const periods = new Set(useRows.map(r => findPeriodIdx(r.period)).filter(i => i >= 0).map(i => PERIODS[i]?.label).filter(Boolean));
+        periods.forEach(label => { next.skuWeeks[label] = { status: 'complete', coveredSkuCodes: covered, missingMeansZero: true, batchId }; });
+        return next;
+      });
 
     } catch(err) { console.error('applySkuUpload error:', err); alert('导入失败：'+(err.message||err)); }
 
@@ -1293,6 +1313,24 @@ function Dashboard(){
       }
 
       setHasRealData(true);
+
+      // v3.6（规则一）：渠道上传按（平台×周期）盖章；overwrite 模式重置渠道覆盖表后重建
+      setDataCoverage(prev => {
+        const next = { skuWeeks: { ...(prev?.skuWeeks || {}) }, channelSkuWeekly: mode === 'overwrite' ? {} : { ...(prev?.channelSkuWeekly || {}) } };
+        const batchId = 'up-' + Date.now();
+        const covered = skuMaster.map(s => s.code);
+        const pairs = new Set(useRows.filter(r => r.channel).map(r => {
+          const i = findPeriodIdx(r.period);
+          return i >= 0 ? r.channel + '|' + (PERIODS[i]?.label || '') : null;
+        }).filter(Boolean));
+        pairs.forEach(pair => {
+          const [ch, label] = pair.split('|');
+          if (!label) return;
+          if (!next.channelSkuWeekly[ch]) next.channelSkuWeekly[ch] = {};
+          next.channelSkuWeekly[ch][label] = { status: 'complete', coveredSkuCodes: covered, missingMeansZero: true, batchId };
+        });
+        return next;
+      });
 
     } catch(err) { console.error('applyChannelUpload error:', err); alert('导入失败：'+(err.message||err)); }
 
@@ -1667,7 +1705,7 @@ function Dashboard(){
 
 
 
-        {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} channelSkuWeekly={channelSkuWeekly} channelWeekly={channelWeekly} activities={activities} setActivities={setActivities} cost={cost} supply={supply} opRate={opRate} isReadOnly={isReadOnly} />}
+        {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} channelSkuWeekly={channelSkuWeekly} channelWeekly={channelWeekly} activities={activities} setActivities={setActivities} cost={cost} supply={supply} opRate={opRate} isReadOnly={isReadOnly} dataCoverage={dataCoverage} />}
 
 
 
@@ -4227,74 +4265,97 @@ function avgArr(arr) {
   if (!arr || arr.length === 0) return 0;
   return sumArr(arr) / arr.length;
 }
+// v3.6：有限分子 + 有限且 >0 分母才计算比率，否则 null；零分母不再返回 Infinity
 function safeDiv(a, b) {
-  if (!b || b === 0) return Infinity;
-  return a / b;
+  const x = Number(a), y = Number(b);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || y <= 0) return null;
+  return x / y;
 }
+// v3.6：null/NaN 不再被压成 0；内部计算保留精度，仅在展示时取小数
 function r2(v, d = 2) {
+  if (v === null || v === undefined) return null;
   const n = Number(v);
   if (n === Infinity) return Infinity;
-  if (!Number.isFinite(n)) return 0;
+  if (!Number.isFinite(n)) return null;
   const decimals = Number.isFinite(Number(d)) ? Number(d) : 2;
   const factor = Math.pow(10, decimals);
   return Math.round(n * factor) / factor;
 }
 
 /**
- * 活动 ROI 核心口径：
- * GMV = 托盘商卖给 C 端用户的终端纯销 GMV
- * Sell-in 不进入此函数。
+ * 活动 ROI 核心口径（v3.6 数学边界修正版）：
+ * GMV = 托盘商卖给 C 端用户的终端纯销 GMV；Sell-in 不进入此函数。
+ * 边界规则：
+ * - 零基线：Lift / 相对增长率 = null，绝对增量仍可算，调用侧标记 baseline_zero；
+ * - 投入 ≤0：ROI = null，Grade = '—'，状态 investment_not_applicable，不得得到 Infinity 或 S；
+ * - 有投入但有效正增量 = 0：ROI = 0，incrementalCostRate = null，状态 no_positive_increment；
+ * - 无可用 Post：persistenceRate = null，有效因子退回基础值给暂估 ROI，标记 provisional；
+ * - 窗口完整观察但无正增量：persistenceRate = null（分母无正增量），ROI 可以为 0；
+ * - 窗口未满：只按已观察周与Baseline同口径对比，标记暂估，不出最终结论。
  */
-function calculateActivityROI(activityGmv) {
+function calculateActivityROI(input) {
   const {
     baselineSales,
     activityWeekSellOut,
     activityWindowSellOut,
+    windowObservedWeeks,
     windowPeriods,
     postActivitySales,
     postPeriodsRequired = ROI_CONFIG.postPeriods,
+    postCalendarAvailable,
+    postMissingWeeks = 0,
     brandInvestment,
     activityPriceSubsidy = 0,
     consumerPriceSubsidy,
     distributorRebate
-  } = activityGmv;
+  } = input;
 
   /* ---------- 1. Baseline ---------- */
   const validBaseline = (baselineSales || []).map(Number).filter(v => Number.isFinite(v));
-  const baselineWeekly = r2(avgArr(validBaseline), 2);
+  const baselineWeekly = validBaseline.length > 0 ? r2(avgArr(validBaseline), 2) : null;
+  const baselineZero = baselineWeekly !== null && baselineWeekly <= 0;
+  const bw = baselineWeekly || 0;
 
   /* ---------- 2. 活动周 ---------- */
-  const actualWeek = Number(activityWeekSellOut || 0);
-  const weekIncremental = Math.max(0, actualWeek - baselineWeekly);
-  const weekLift = safeDiv(actualWeek, baselineWeekly);
-  const weekIncRate = safeDiv(weekIncremental, baselineWeekly);
+  const actualWeek = Number.isFinite(Number(activityWeekSellOut)) ? Number(activityWeekSellOut) : 0;
+  const weekNetIncremental = actualWeek - bw;
+  const weekIncremental = Math.max(0, weekNetIncremental);
+  const weekLift = (baselineWeekly === null || baselineZero) ? null : safeDiv(actualWeek, baselineWeekly);
+  const weekIncRate = (baselineWeekly === null || baselineZero) ? null : safeDiv(weekIncremental, baselineWeekly);
 
-  /* ---------- 3. 活动窗口 ---------- */
+  /* ---------- 3. 活动窗口（只按已观察周与 Baseline 同口径对比；窗口未满 = 暂估） ---------- */
   const winPeriods = Math.max(1, Number(windowPeriods || 1));
-  const winBaseline = baselineWeekly * winPeriods;
-  const winActual = Number(activityWindowSellOut || 0);
-  const winIncremental = Math.max(0, winActual - winBaseline);
-  const winLift = safeDiv(winActual, winBaseline);
-  const winIncRate = safeDiv(winIncremental, winBaseline);
-  const windowWeeklyIncremental = safeDiv(winIncremental, winPeriods);
+  const observedW = Math.max(0, Math.min(winPeriods, Number.isFinite(Number(windowObservedWeeks)) ? Number(windowObservedWeeks) : winPeriods));
+  const winActual = Number.isFinite(Number(activityWindowSellOut)) ? Number(activityWindowSellOut) : 0;
+  const winBaselineFull = bw * winPeriods;
+  const winBaselineMatched = bw * observedW;
+  const windowFullyObserved = observedW >= winPeriods;
+  const winNetIncremental = winActual - winBaselineMatched;   // 有符号净增量（同口径已观察周）
+  const winIncremental = Math.max(0, winNetIncremental);      // 正增量（管理规则）
+  const winLift = (baselineWeekly === null || baselineZero || observedW === 0) ? null : safeDiv(winActual, winBaselineMatched);
+  const winIncRate = (baselineWeekly === null || baselineZero) ? null : safeDiv(winIncremental, winBaselineMatched);
+  const windowWeeklyIncremental = observedW > 0 ? winIncremental / observedW : null;
 
-  /* ---------- 4. 活动后持续性（时间标准化） ---------- */
+  /* ---------- 4. 活动后持续性（时间标准化；缺失周不按 0 计入，真实 0 销量周计入） ---------- */
   const postSales = (postActivitySales || []).map(Number).filter(v => Number.isFinite(v));
-  const postBaselineVal = baselineWeekly * postSales.length;
+  const postBaselineVal = bw * postSales.length;
   const postActual = sumArr(postSales);
-
   // 允许负增量，反映活动透支
-  const postNetIncremental = postSales.reduce((total, sale) => total + (sale - baselineWeekly), 0);
-  const postWeeklyIncremental = postSales.length > 0 ? postNetIncremental / postSales.length : 0;
+  const postNetIncremental = postSales.reduce((total, sale) => total + (sale - bw), 0);
+  const postWeeklyIncremental = postSales.length > 0 ? postNetIncremental / postSales.length : null;
 
-  let persistenceRate = 0;
-  if (windowWeeklyIncremental > 0) {
+  let persistenceRate = null;
+  if (postSales.length > 0 && windowWeeklyIncremental !== null && windowWeeklyIncremental > 0) {
     persistenceRate = postWeeklyIncremental / windowWeeklyIncremental;
+    persistenceRate = Math.min(1, Math.max(-1, persistenceRate));
   }
-  persistenceRate = Math.min(1, Math.max(-1, persistenceRate));
+  // 无可用 Post / 窗口无正增量 → persistenceRate 保持 null，不以 0 冒充已观察结果
 
-  /* ---------- 5. 有效增量（管理规则） ---------- */
-  const effectiveFactor = ROI_CONFIG.baseEffectiveFactor + ROI_CONFIG.persistenceWeight * Math.max(0, persistenceRate);
+  /* ---------- 5. 有效增量（管理规则；无 Post 时退回基础有效因子，给出暂估 ROI 并标记 provisional） ---------- */
+  const roiProvisional = persistenceRate === null;
+  const effectiveFactor = persistenceRate === null
+    ? ROI_CONFIG.baseEffectiveFactor
+    : ROI_CONFIG.baseEffectiveFactor + ROI_CONFIG.persistenceWeight * Math.max(0, persistenceRate);
   const effectiveIncremental = winIncremental * effectiveFactor;
 
   /* ---------- 6. 品牌真实投入（消费者补贴与托盘商返利拆开；旧 activityPriceSubsidy 兼容归入消费者补贴，不重复计算） ---------- */
@@ -4305,19 +4366,32 @@ function calculateActivityROI(activityGmv) {
   const rebateVal = hasNewSubsidyFields ? Math.max(0, toSafeNum(distributorRebate, 0)) : 0;
   const totalBrandInvestment = baseInvestment + consumerSubsidyVal + rebateVal;
 
-  /* ---------- 7. ROI ---------- */
-  const roi = totalBrandInvestment > 0 ? effectiveIncremental / totalBrandInvestment : Infinity;
-  const costRate = effectiveIncremental > 0 ? totalBrandInvestment / effectiveIncremental : 0;
-  const costRatePct = costRate * 100;
+  /* ---------- 7. ROI 与状态 ---------- */
+  let roi = null, costRate = null, roiStatus = 'ok';
+  if (totalBrandInvestment <= 0) {
+    roiStatus = 'investment_not_applicable';          // 无有效投入，ROI 不适用，不得 Infinity 或 S
+  } else if (effectiveIncremental <= 0) {
+    roi = 0; roiStatus = 'no_positive_increment';     // 有投入但无正增量：ROI=0，成本率不可计算
+  } else {
+    roi = effectiveIncremental / totalBrandInvestment;
+    costRate = totalBrandInvestment / effectiveIncremental;
+  }
 
-  /* ---------- 8. 观察期完整性 ---------- */
+  /* ---------- 8. 观察期完整性（日历有周 ≠ 数据已上传；缺周不得显示已完成） ---------- */
   const requiredPostPeriods = Math.max(1, Number(postPeriodsRequired || ROI_CONFIG.postPeriods));
-  const observationComplete = postSales.length >= requiredPostPeriods;
+  const calendarAvail = postCalendarAvailable !== undefined ? Number(postCalendarAvailable) : postSales.length;
+  const observationComplete = calendarAvail >= requiredPostPeriods
+    && postSales.length >= requiredPostPeriods
+    && Number(postMissingWeeks || 0) === 0;
 
-  /* ---------- 9. 评级（仅根据 ROI） ---------- */
+  /* ---------- 9. 评级（仅最终态给级；暂估/无投入一律 '—'，不得仅凭无限 Lift 给好评级） ---------- */
   let grade = 'D', label = '无效', recommendation = '原则上停止品牌投入';
 
-  if (!observationComplete) {
+  if (roiStatus === 'investment_not_applicable') {
+    grade = '—'; label = '无有效投入'; recommendation = '无有效投入，ROI 不适用';
+  } else if (roiStatus === 'no_positive_increment') {
+    grade = 'D'; label = '无效'; recommendation = '活动未产生有效正增量，原则上停止品牌投入';
+  } else if (!observationComplete) {
     grade = '—'; label = '观察不足'; recommendation = `活动后仅观察 ${postSales.length}/${requiredPostPeriods} 周，暂不进行最终评级`;
   } else if (roi >= ROI_CONFIG.gradeThresholds.S) {
     grade = 'S'; label = '优秀'; recommendation = '建议加大同类活动投入';
@@ -4330,15 +4404,503 @@ function calculateActivityROI(activityGmv) {
   }
 
   return {
-    baseline: { weeklySellOut: baselineWeekly, periods: validBaseline.length },
-    activityWeek: { activityWeekSellOut: r2(actualWeek), activityWeekBaseline: r2(baselineWeekly), activityWeekIncremental: r2(weekIncremental), activityWeekLift: r2(weekLift, 3), activityWeekIncrementalRate: r2(weekIncRate, 4) },
-    activityWindow: { windowPeriods: winPeriods, windowActualSellOut: r2(winActual), windowBaselineSellOut: r2(winBaseline), windowIncrementalSellOut: r2(winIncremental), windowWeeklyIncremental: r2(windowWeeklyIncremental), windowLift: r2(winLift, 3), windowIncrementalRate: r2(winIncRate, 4) },
-    postActivity: { postPeriods: postSales.length, postPeriodsRequired: requiredPostPeriods, postActualSellOut: r2(postActual), postBaselineSellOut: r2(postBaselineVal), postNetIncrementalSellOut: r2(postNetIncremental), postWeeklyIncremental: r2(postWeeklyIncremental), persistenceRate: r2(persistenceRate, 4), observationComplete },
-    effectiveIncremental: { persistenceRate: r2(persistenceRate, 4), effectiveFactor: r2(effectiveFactor, 4), effectiveIncrementalSellOut: r2(effectiveIncremental) },
+    baseline: { weeklySellOut: baselineWeekly, periods: validBaseline.length, zero: baselineZero },
+    activityWeek: { activityWeekSellOut: r2(actualWeek), activityWeekBaseline: baselineWeekly, activityWeekIncremental: r2(weekIncremental), activityWeekNetIncremental: r2(weekNetIncremental), activityWeekLift: weekLift === null ? null : r2(weekLift, 3), activityWeekIncrementalRate: weekIncRate === null ? null : r2(weekIncRate, 4) },
+    activityWindow: { windowPeriods: winPeriods, observedWeeks: observedW, fullyObserved: windowFullyObserved, windowActualSellOut: r2(winActual), windowBaselineSellOut: r2(winBaselineMatched), windowBaselineFullSellOut: r2(winBaselineFull), windowIncrementalSellOut: r2(winIncremental), windowNetIncrementalSellOut: r2(winNetIncremental), windowWeeklyIncremental: windowWeeklyIncremental === null ? null : r2(windowWeeklyIncremental), windowLift: winLift === null ? null : r2(winLift, 3), windowIncrementalRate: winIncRate === null ? null : r2(winIncRate, 4) },
+    postActivity: { postPeriods: postSales.length, postPeriodsRequired: requiredPostPeriods, postActualSellOut: r2(postActual), postBaselineSellOut: r2(postBaselineVal), postNetIncrementalSellOut: r2(postNetIncremental), postWeeklyIncremental: postWeeklyIncremental === null ? null : r2(postWeeklyIncremental), persistenceRate: persistenceRate === null ? null : r2(persistenceRate, 4), observationComplete, missingWeeks: Number(postMissingWeeks || 0) },
+    effectiveIncremental: { persistenceRate: persistenceRate === null ? null : r2(persistenceRate, 4), effectiveFactor: r2(effectiveFactor, 4), effectiveIncrementalSellOut: r2(effectiveIncremental), provisional: roiProvisional },
     investment: { brandInvestment: r2(baseInvestment), activityPriceSubsidy: r2(legacySubsidy), consumerPriceSubsidy: r2(consumerSubsidyVal), distributorRebate: r2(rebateVal), totalBrandInvestment: r2(totalBrandInvestment) },
-    return: { incrementalSellOutROI: roi === Infinity ? Infinity : r2(roi), incrementalCostRate: r2(costRate, 4), incrementalCostRatePercent: r2(costRatePct, 2) },
+    return: { incrementalSellOutROI: roi === null ? null : (roi === Infinity ? Infinity : r2(roi)), incrementalCostRate: costRate === null ? null : r2(costRate, 4), incrementalCostRatePercent: costRate === null ? null : r2(costRate * 100, 2), status: roiStatus, provisional: roiProvisional },
     evaluation: { grade, label, recommendation }
   };
+}
+
+/* ================= v3.6：经营质量 / 风险 / 结论（全局，供核心与 UI 同源使用） ================= */
+
+// 经营质量分类：X=Incremental ROI（1x 增量销售效率参考线，非利润回本线），Y=Persistence（0 为界）
+const classifyQuality = (roiVal, persistVal) => {
+  if (persistVal === null || persistVal === undefined) return null;
+  const p = Number(persistVal);
+  if (!Number.isFinite(p)) return null;
+  if (toMetricNumber(roiVal) === null) return null;
+  const roiHigh = Number(roiVal) >= 1;
+  const persistHigh = p >= 0;
+  if (roiHigh && persistHigh) return 'strategic';
+  if (roiHigh && !persistHigh) return 'explosive';
+  if (!roiHigh && persistHigh) return 'cultivation';
+  return 'consumptive';
+};
+const QUALITY_META = {
+  strategic: { label: '战略型活动', desc: '当期增量效率高，活动结束后仍能保留增量', color: '#16a34a' },
+  explosive: { label: '爆发型活动', desc: '活动期间有效，但持续性弱，可能为一次性促销/节点驱动', color: '#ea580c' },
+  cultivation: { label: '培育型活动', desc: '当期投放效率一般，但对渠道/用户/销售持续性存在价值', color: '#0d9488' },
+  consumptive: { label: '消耗型活动', desc: '既没有明显增量效率，也没有形成持续增长', color: '#dc2626' }
+};
+// v3.6（规则五）：风险与状态多标签并存，不压缩成单一字段
+const RISK_META = {
+  normal: { label: '正常', color: '#16a34a' },
+  brand_total_loss: { label: '风险：品牌整体贡献为负', color: '#dc2626' },
+  brand_incremental_loss: { label: '风险：品牌增量贡献为负', color: '#dc2626' },
+  baseline_insufficient: { label: 'Baseline不足', color: '#d97706' },
+  baseline_zero: { label: '零基线/新渠道参考', color: '#d97706' },
+  window_incomplete: { label: '窗口未满', color: '#d97706' },
+  window_data_missing: { label: '窗口数据缺失', color: '#d97706' },
+  post_data_missing: { label: '观察期缺周', color: '#d97706' },
+  observing: { label: '观察中', color: '#2563eb' },
+  price_missing: { label: '价格缺失', color: '#d97706' },
+  coverage_unknown: { label: '完整性未确认', color: '#9333ea' },
+  attribution_overlap: { label: '归因重叠', color: '#dc2626' },
+  investment_not_applicable: { label: '无有效投入', color: '#94a3b8' },
+  no_positive_increment: { label: '无正增量', color: '#dc2626' }
+};
+
+// 自动经营结论（规则六）：最终结论必须满足 窗口完整 + Baseline可用 + Post完成 + 数据完整性已确认 + 引用利润字段可靠；
+// 不满足时只给「暂估/待补数据」，不得给「可复制」「持续性强」
+const buildConclusion = ({ roiVal, persistVal, brandNet, distEconNet, finalAllowed, caveat }) => {
+  if (!finalAllowed) {
+    return (caveat ? caveat + '。' : '') + '暂估/待补数据：窗口、Baseline、观察期或数据完整性未全部确认，暂不出具最终经营结论。';
+  }
+  const roiKnown = toMetricNumber(roiVal) !== null;
+  const p = (persistVal === null || persistVal === undefined) ? null : Number(persistVal);
+  if (!roiKnown && p === null) return null;
+  const roiHigh = roiKnown && Number(roiVal) >= 1;
+  const persistHigh = p !== null && p > 0;
+  const persistNeg = p !== null && p < 0;
+  const brandOk = Number(brandNet) > 0;
+  const distOk = Number(distEconNet) > 0;
+  if (p === null) return '效率与利润已测算，但持续性不可计算（观察期无有效数据或窗口无正增量），不出具持续性结论。';
+  if (roiHigh && persistHigh && brandOk && distOk) return '优质活动：增量效率高、活动结束后保留正向增量，且品牌与托盘商均保持正向经济收益，具备复制价值。';
+  if (roiHigh && persistHigh && !brandOk) return '高效率但低经济质量：活动带来了明显增量与持续性，但品牌最终净利为负，应优先检查活动投入及补贴结构。';
+  if (roiHigh && !persistHigh && brandOk) return '爆发型活动：活动期增量效率较高，但活动后回到 Baseline 附近或更低，更适合节点型活动，不宜直接判断为长期增长引擎。';
+  if (!roiHigh && persistHigh && brandOk) return '培育型活动：短期效率一般，但活动后的销售保持较好，建议从长期渠道价值而非单场ROI判断。';
+  if (!roiHigh && persistNeg && !brandOk) return '消耗型活动：短期没有形成有效增量，活动后低于 Baseline 存在透支信号，同时品牌净利为负，应考虑停止或重构。';
+  if (!roiHigh && !persistHigh) return '短期增量效率与活动后持续性均偏弱，建议复盘活动机制与投入结构后再决定是否继续。';
+  if (!roiHigh && persistHigh) return '培育型活动：短期效率一般，活动后保持一定增量，但需关注品牌净利水平，避免以补贴维持表面持续性。';
+  return '效率与经济结果不完全同向：建议结合增量利润与双方净利结构进一步复盘。';
+};
+
+/**
+ * v3.6：活动分析纯计算核心（无 React 依赖，可单测）。
+ * 数据状态规则（规则一）：
+ * - 显式合法 gmv:0 / sales:0 / vol:0 为真实 0；null / undefined / 空对象 / 空字符串为缺失；
+ * - GMV 与销量分别判断，存在其一不代表另一个也存在；
+ * - 缺失 SKU 行只有在 dataCoverage 元数据 complete + 覆盖该 SKU + missingMeansZero=true 时才解释为 0；
+ * - 不用「整周任意一个 SKU 有行」直接证明完整；旧数据无元数据 → unknown，不自动盖章 complete；
+ * - 元数据不完整但所有选中 SKU 必要字段均有显式合法记录时，按该选定范围判定完整（规则八）；
+ * - 稀疏假设测算结果一律 reliability='assumed'，标注「按稀疏数据假设测算，完整性未确认」，
+ *   不进最终评级、最终质量分类与正式汇总。
+ */
+function calculateActivityCore(input) {
+  const { act, PERIODS, skuMaster, skuWeeks, channelSkuWeekly, cost, supply, opRate, dataCoverage, activities, hasChannelSkuData } = input;
+  const startIdx = PERIODS.findIndex(p => p.label === act.startWeek);
+  if (startIdx < 0) return { error: `起始周 "${act.startWeek}" 不在时间轴中，当前可用周期：${PERIODS.map(p => p.label).join('、')}`, status: 'invalid' };
+
+  const activityChannel = act.activityChannel || 'ALL';
+  const isAllChannels = !activityChannel || activityChannel === 'ALL';
+  const cov = dataCoverage || {};
+
+  const validSkus = (act.skuMode === 'all' ? skuMaster.map(s => s.code) : (act.skuCodes || []))
+    .filter(code => skuMaster.some(s => s.code === code));
+  if (validSkus.length === 0) return { error: '未选择有效 SKU', status: 'invalid' };
+  const skuScopeNote = act.skuMode === 'all' ? 'skuMode=all 按活动保存时的 SKU 范围处理；历史无快照，按当前主数据展开' : null;
+
+  if (!isAllChannels && hasChannelSkuData) {
+    let hasAnyData = false;
+    for (const code of validSkus) {
+      for (let i = 0; i < PERIODS.length; i++) {
+        const cell = channelSkuWeekly?.[code]?.[activityChannel]?.[i];
+        if (cell && typeof cell === 'object') { hasAnyData = true; break; }
+      }
+      if (hasAnyData) break;
+    }
+    if (!hasAnyData) {
+      return {
+        error: `该平台（${activityChannel}）暂无 SKU 周度终端纯销数据，无法计算该活动 ROI。请先上传该平台的 SKU×周度数据。`,
+        status: 'invalid',
+        diagnosis: { startWeek: act.startWeek, startIdx, activityChannel, validSkuCount: validSkus.length, baselineAvailable: 0, baselineRequired: act.baselinePeriods, actualBaselinePeriods: 0, windowAvailable: 0, windowRequired: act.windowPeriods, postAvailable: 0, postRequired: act.postPeriods, baselineWeeks: [], baselineSkipped: [], windowWeeks: [], postWeeks: [], missingPeriods: [], overlapWarnings: [], pollutionWarnings: [] }
+      };
+    }
+  }
+
+  /* ---------- 统一周对象（规则二）：baseline / window / post 同一构造器、同一有效周定义 ---------- */
+  const cellOf = (code, idx) => isAllChannels ? skuWeeks?.[code]?.[idx] : channelSkuWeekly?.[code]?.[activityChannel]?.[idx];
+  const covMetaAt = (idx) => {
+    const label = PERIODS[idx]?.label;
+    if (!label) return null;
+    return isAllChannels ? (cov.skuWeeks?.[label] || null) : (cov.channelSkuWeekly?.[activityChannel]?.[label] || null);
+  };
+  const buildWeek = (idx) => {
+    const label = PERIODS[idx]?.label;
+    const meta = covMetaAt(idx);
+    const metaSanctioned = !!(meta && meta.status === 'complete' && meta.missingMeansZero === true);
+    let gmv = 0, sales = 0, distCOGS = 0, brandCOGS = 0, anyRecord = false;
+    let gmvComplete = true, salesComplete = true;
+    const missingSkus = [], missingFields = [], missingPrices = [];
+    validSkus.forEach(code => {
+      const cell = cellOf(code, idx);
+      const hasCell = !!(cell && typeof cell === 'object');
+      const sanctioned = !hasCell && metaSanctioned && Array.isArray(meta.coveredSkuCodes) && meta.coveredSkuCodes.includes(code);
+      if (!hasCell && !sanctioned) {
+        missingSkus.push(code); gmvComplete = false; salesComplete = false;
+        return; // 缺失 ≠ 0：未盖章的缺失行不贡献数值
+      }
+      const g = hasCell ? toMetricNumber(cell.gmv) : 0;
+      const sv = hasCell ? toMetricNumber(isAllChannels ? cell.sales : (cell.vol !== undefined ? cell.vol : cell.sales)) : 0;
+      if (hasCell) anyRecord = true;
+      if (g === null) { missingFields.push(code + ':gmv'); gmvComplete = false; } else gmv += g;
+      if (sv === null) { missingFields.push(code + ':sales'); salesComplete = false; } else {
+        sales += sv;
+        const sp = toMetricNumber(supply?.[code]);
+        const cp = toMetricNumber(cost?.[code]);
+        if (sp === null) { if (sv > 0) missingPrices.push(code + ':supply'); } else distCOGS += sp * sv;
+        if (cp === null) { if (sv > 0) missingPrices.push(code + ':cost'); } else brandCOGS += cp * sv;
+      }
+    });
+    // 经济性完整性（规则三）：有销量 SKU 的价格必须齐全，缺失不以 0 或估算价代替
+    const salesFieldMissing = missingFields.some(f => f.endsWith(':sales'));
+    const distEconComplete = !salesFieldMissing && !missingPrices.some(p => p.endsWith(':supply'));
+    const brandEconComplete = distEconComplete && !missingPrices.some(p => p.endsWith(':cost'));
+    let status;
+    if (!anyRecord && !metaSanctioned) status = 'unknown';        // 完整性未知（整周无记录且未盖章）
+    else if (!anyRecord && metaSanctioned) status = 'zero';       // 明确零销量（元数据确认）
+    else if (!gmvComplete || !salesComplete) status = 'partial';  // 部分缺失
+    else status = (gmv === 0 && sales === 0) ? 'zero' : 'complete'; // 完整（规则八：显式记录齐全）
+    return { periodId: label, idx, gmv, sales, distCOGS, brandCOGS,
+      gmvComplete, salesComplete, distEconComplete, brandEconComplete,
+      economicsComplete: distEconComplete && brandEconComplete,
+      missingSkus, missingFields, missingPrices, anyRecord, status,
+      usable: anyRecord || metaSanctioned };
+  };
+
+  const winP = Math.max(1, Number(act.windowPeriods) || 1);
+  const postP = Math.max(1, Number(act.postPeriods) || 1);
+
+  /* ---------- Baseline：向前寻找最近 N 个有效周，返回实际使用与跳过的周期（规则二） ---------- */
+  const actualBaselinePeriods = Math.min(Number(act.baselinePeriods) || ROI_CONFIG.baselinePeriods, startIdx);
+  const baselineWeeks = [], baselineSkipped = [];
+  for (let i = startIdx - 1; i >= 0 && baselineWeeks.length < actualBaselinePeriods; i--) {
+    const w = buildWeek(i);
+    if (w.usable) baselineWeeks.push(w); else baselineSkipped.push(w);
+  }
+  baselineWeeks.reverse(); // 时间正序
+  const baselineSales = baselineWeeks.map(w => w.gmv);
+  const blN = baselineWeeks.length;
+  const baselineReliable = blN >= 2; // 少于 2 个有效周不计算可靠增量指标
+
+  /* ---------- Activity Window：区分日历窗口未满与已有周期数据缺失 ---------- */
+  const windowWeeks = [];
+  let windowCalendarMissing = 0;
+  for (let i = startIdx; i < startIdx + winP; i++) {
+    if (i >= PERIODS.length) { windowCalendarMissing++; continue; }
+    windowWeeks.push(buildWeek(i));
+  }
+  const windowObserved = windowWeeks.filter(w => w.usable);
+  const windowDataMissingWeeks = windowWeeks.filter(w => !w.usable);
+  const windowFullyObserved = windowCalendarMissing === 0 && windowDataMissingWeeks.length === 0;
+  const windowVal = windowObserved.reduce((t, w) => t + w.gmv, 0);
+  const activityWeekSellOut = (windowWeeks.length > 0 && windowWeeks[0].usable) ? windowWeeks[0].gmv : 0;
+
+  /* ---------- Post：时间轴有该周 ≠ 数据已上传；缺失周不按 0 加入，真实 0 销量周必须加入 ---------- */
+  const postWeeks = [];
+  let postCalendarMissing = 0;
+  for (let i = startIdx + winP; i < startIdx + winP + postP; i++) {
+    if (i >= PERIODS.length) { postCalendarMissing++; continue; }
+    postWeeks.push(buildWeek(i));
+  }
+  const postObserved = postWeeks.filter(w => w.usable);
+  const postMissingWeeks = postWeeks.filter(w => !w.usable);
+  const postActivitySales = postObserved.map(w => w.gmv);
+  const postCalendarAvailable = postWeeks.length;
+  const postCompleteNow = postCalendarMissing === 0 && postObserved.length >= postP && postMissingWeeks.length === 0;
+
+  /* ---------- 经济链聚合（规则三）：GMV 增量不依赖价格；利润按价格可用性分侧返回 null + 原因 ---------- */
+  const op = Math.min(90, Math.max(0, toSafeNum(opRate, 0))) / 100;
+  const sumAgg = (arr, k) => arr.reduce((t, w) => t + (Number.isFinite(w?.[k]) ? w[k] : 0), 0);
+  const wGmv = sumAgg(windowObserved, 'gmv'), wSales = sumAgg(windowObserved, 'sales');
+  const wDistCOGS = sumAgg(windowObserved, 'distCOGS'), wBrandCOGS = sumAgg(windowObserved, 'brandCOGS');
+  const wSalesMissing = [...new Set(windowObserved.flatMap(w => w.missingFields.filter(f => f.endsWith(':sales'))))];
+  const distPriceMissing = [...new Set(windowObserved.flatMap(w => w.missingPrices.filter(p => p.endsWith(':supply'))))];
+  const brandPriceMissing = [...new Set(windowObserved.flatMap(w => w.missingPrices))];
+  const distEconOK = wSalesMissing.length === 0 && distPriceMissing.length === 0;
+  const brandEconOK = distEconOK && brandPriceMissing.length === 0;
+
+  const invest = Math.max(0, toSafeNum(act.brandInvestment, 0));
+  const consumerSub = Math.max(0, toSafeNum(act.consumerPriceSubsidy, 0));
+  const rebate = Math.max(0, toSafeNum(act.distributorRebate, 0));
+  const totalInvest = invest + consumerSub + rebate;
+
+  const marginOf = (p, r) => (Number.isFinite(p) && Number.isFinite(r) && r > 0 ? p / r : null);
+  const wDistGross = distEconOK ? wGmv - wDistCOGS : null;
+  const wDistNet = distEconOK ? wGmv * (1 - op) - wDistCOGS : null;
+  const wDistEconNet = wDistNet === null ? null : wDistNet + rebate;
+  const wBrandRevenue = distEconOK ? wDistCOGS : null;
+  const wBrandGross = brandEconOK ? wDistCOGS - wBrandCOGS : null;
+  const wBrandNet = wBrandGross === null ? null : wBrandGross - invest - consumerSub - rebate;
+
+  // Baseline 周均利润（Baseline 不扣活动投入，规则十四）
+  const blGmvW = blN > 0 ? sumAgg(baselineWeeks, 'gmv') / blN : null;
+  const blSalesW = blN > 0 ? sumAgg(baselineWeeks, 'sales') / blN : null;
+  const blDistCOGSW = blN > 0 ? sumAgg(baselineWeeks, 'distCOGS') / blN : null;
+  const blBrandCOGSW = blN > 0 ? sumAgg(baselineWeeks, 'brandCOGS') / blN : null;
+  const blDistGrossW = (blN > 0 && distEconOK) ? blGmvW - blDistCOGSW : null;
+  const blDistNetW = (blN > 0 && distEconOK) ? blGmvW * (1 - op) - blDistCOGSW : null;
+  const blBrandGrossW = (blN > 0 && brandEconOK) ? blDistCOGSW - blBrandCOGSW : null;
+  const blBrandNetW = blBrandGrossW;
+
+  // 增量利润：Baseline 周均 × 已观察窗口周数（同口径对比；窗口未满 = 暂估）；Baseline < 2 周不计算
+  const canIncremental = baselineReliable;
+  const obsN = Math.max(1, windowObserved.length);
+  const incDistGross = (canIncremental && wDistGross !== null) ? wDistGross - blDistGrossW * obsN : null;
+  const incDistNet = (canIncremental && wDistNet !== null) ? wDistNet - blDistNetW * obsN : null;
+  const incDistEconNet = (canIncremental && wDistEconNet !== null) ? wDistEconNet - blDistNetW * obsN : null;
+  const incBrandGross = (canIncremental && wBrandGross !== null) ? wBrandGross - blBrandGrossW * obsN : null;
+  const incBrandNet = (canIncremental && wBrandNet !== null) ? wBrandNet - blBrandNetW * obsN : null;
+  // 增量净利率分母保持现状（不擅自换分母）：品牌=活动供货测算收入；托盘商=活动终端GMV
+  const incBrandNetRate = canIncremental ? marginOf(incBrandNet, wBrandRevenue) : null;
+  const incDistNetRate = canIncremental ? marginOf(incDistEconNet, wGmv) : null;
+  const profitInvestment = (canIncremental && incBrandNet !== null && totalInvest > 0) ? incBrandNet / totalInvest : null;
+
+  // Post Observation 经济：投入只归属活动窗口，Post 不重复扣减
+  const pGmv = sumAgg(postObserved, 'gmv'), pSales = sumAgg(postObserved, 'sales');
+  const pDistCOGS = sumAgg(postObserved, 'distCOGS'), pBrandCOGS = sumAgg(postObserved, 'brandCOGS');
+  const postDistGross = distEconOK ? pGmv - pDistCOGS : null;
+  const postDistNet = distEconOK ? pGmv * (1 - op) - pDistCOGS : null;
+  const postBrandGross = brandEconOK ? pDistCOGS - pBrandCOGS : null;
+  const postBrandNet = postBrandGross;
+  const postIncGmv = canIncremental ? pGmv - blGmvW * postObserved.length : null;
+
+  /* ---------- 数据可靠性（规则一.7/八）：完整确认 vs 稀疏假设 ---------- */
+  const usedWeeks = [...baselineWeeks, ...windowObserved, ...postObserved];
+  const hasUnconfirmedGaps = baselineSkipped.length > 0 || windowDataMissingWeeks.length > 0 || postMissingWeeks.length > 0;
+  const allConfirmed = usedWeeks.length > 0 && usedWeeks.every(w => w.status === 'complete' || w.status === 'zero') && !hasUnconfirmedGaps;
+  const reliability = allConfirmed ? 'confirmed' : 'assumed';
+
+  /* ---------- 最终结论门控（规则六） ---------- */
+  const finalAllowed = reliability === 'confirmed' && windowFullyObserved && baselineReliable && postCompleteNow
+    && (wBrandNet !== null || !brandEconOK);
+
+  /* ---------- 风险与状态标签（规则五）：多标签并存，不压缩成单一字段 ---------- */
+  const economicRisk = [];
+  if (!baselineReliable) economicRisk.push('baseline_insufficient');
+  if (blN > 0 && blGmvW !== null && blGmvW <= 0) economicRisk.push('baseline_zero');
+  if (windowCalendarMissing > 0) economicRisk.push('window_incomplete');
+  if (windowDataMissingWeeks.length > 0) economicRisk.push('window_data_missing');
+  if (postCalendarMissing > 0) economicRisk.push('observing');
+  if (postMissingWeeks.length > 0) economicRisk.push('post_data_missing');
+  if (reliability === 'assumed') economicRisk.push('coverage_unknown');
+  if (brandPriceMissing.length > 0) economicRisk.push('price_missing');
+  if (totalInvest <= 0) economicRisk.push('investment_not_applicable');
+  // 拆分 brand_loss：整体贡献净额 <0 与增量贡献净额 <0 独立判定（验收 G）
+  if (wBrandNet !== null && wBrandNet < 0) economicRisk.push('brand_total_loss');
+  if (canIncremental && incBrandNet !== null && incBrandNet < 0) economicRisk.push('brand_incremental_loss');
+
+  /* ---------- 活动重叠（规则八）：时间窗口 × 渠道范围 × SKU 范围三项同时重叠才算直接归因重叠 ---------- */
+  const thisRange = { s: startIdx, e: startIdx + winP };
+  const baselineRange = { s: startIdx - blN, e: startIdx };
+  const postRange = { s: startIdx + winP, e: startIdx + winP + postP };
+  const rangesOverlap = (a, b) => Math.max(a.s, b.s) < Math.min(a.e, b.e);
+  const thisSkuSet = new Set(validSkus);
+  const overlapWarnings = [], pollutionWarnings = [];
+  let attributionOverlap = false;
+  (activities || []).forEach(other => {
+    if (!other || other.id === act.id) return;
+    const oStart = PERIODS.findIndex(p => p.label === other.startWeek);
+    if (oStart < 0) return;
+    const oRange = { s: oStart, e: oStart + Math.max(1, Number(other.windowPeriods) || 1) };
+    const oChannel = other.activityChannel || 'ALL';
+    // ALL 渠道与任意渠道有交集
+    const channelHit = isAllChannels || oChannel === 'ALL' || oChannel === activityChannel;
+    // skuMode=all 按活动保存的 SKU 范围处理；历史无快照按当前主数据展开
+    const oSkus = (other.skuMode === 'all' ? skuMaster.map(s => s.code) : (other.skuCodes || [])).filter(c => skuMaster.some(s => s.code === c));
+    const skuHit = oSkus.some(c => thisSkuSet.has(c));
+    if (rangesOverlap(thisRange, oRange) && channelHit && skuHit) {
+      attributionOverlap = true;
+      overlapWarnings.push(`⚠ 与「${other.name}」时间窗口、渠道、SKU 三项均重叠，存在直接归因重叠；两活动增量为活动口径合计，可能重复归因，不可直接相加。`);
+    }
+    // 检查其他活动是否污染本活动 Baseline / Post（先提示，不自动分摊、不假装已消除归因偏差）
+    if ((rangesOverlap(baselineRange, oRange) || rangesOverlap(postRange, oRange)) && channelHit && skuHit) {
+      pollutionWarnings.push(`⚠「${other.name}」的活动窗口落入本活动的 Baseline/观察期范围，可能影响基准与持续性测算（未自动分摊）。`);
+    }
+  });
+  if (attributionOverlap) economicRisk.push('attribution_overlap');
+  if (economicRisk.length === 0) economicRisk.push('normal');
+
+  /* ---------- 诊断（规则九）：每周按真实状态展示；整周完全缺失也进入 missingPeriods ---------- */
+  const diagnosis = {
+    startWeek: act.startWeek, startIdx,
+    activityChannel: isAllChannels ? 'ALL（全渠道兼容）' : activityChannel,
+    validSkuCount: validSkus.length,
+    baselineAvailable: blN, baselineRequired: act.baselinePeriods, actualBaselinePeriods,
+    windowAvailable: windowObserved.length, windowRequired: winP, windowCalendarMissing,
+    postAvailable: postObserved.length, postRequired: postP, postCalendarMissing,
+    baselineWeeks, baselineSkipped, windowWeeks, postWeeks,
+    missingPeriods: [], overlapWarnings, pollutionWarnings, skuScopeNote, reliability
+  };
+  const stageOf = (w) => baselineWeeks.includes(w) || baselineSkipped.includes(w) ? 'Baseline' : (windowWeeks.includes(w) ? 'Activity Window' : 'Post Observation');
+  [...baselineSkipped, ...windowDataMissingWeeks, ...postMissingWeeks].forEach(w => {
+    diagnosis.missingPeriods.push({ stage: stageOf(w), period: w.periodId, wholeWeek: true, missingSkus: [] });
+  });
+  usedWeeks.forEach(w => {
+    if (w.missingSkus.length > 0) {
+      diagnosis.missingPeriods.push({ stage: stageOf(w), period: w.periodId, wholeWeek: false, missingSkus: w.missingSkus.slice() });
+    }
+  });
+
+  /* ---------- economics（增量命名区分：净增量=有符号，正增量=管理规则） ---------- */
+  const matchedBaselineGmv = canIncremental ? blGmvW * obsN : null;
+  const economics = {
+    terminal: {
+      gmv: r2(wGmv), sales: r2(wSales),
+      avgSellPrice: wSales > 0 ? r2(wGmv / wSales) : null,
+      baselineWeeklyGmv: blGmvW === null ? null : r2(blGmvW),
+      baselineWindowGmv: matchedBaselineGmv === null ? null : r2(matchedBaselineGmv),
+      incrementalSellout: canIncremental ? r2(Math.max(0, wGmv - matchedBaselineGmv)) : null,
+      netIncrementalSellout: canIncremental ? r2(wGmv - matchedBaselineGmv) : null
+    },
+    distributor: distEconOK ? {
+      revenue: r2(wGmv),
+      grossProfit: r2(wDistGross), grossMargin: marginOf(wDistGross, wGmv),
+      netProfit: r2(wDistNet), netMargin: marginOf(wDistNet, wGmv),
+      economicNetProfit: r2(wDistEconNet),
+      incrementalGrossProfit: incDistGross === null ? null : r2(incDistGross),
+      incrementalNetProfit: incDistNet === null ? null : r2(incDistNet),
+      incrementalEconomicNetProfit: incDistEconNet === null ? null : r2(incDistEconNet),
+      incrementalNetProfitRate: incDistNetRate
+    } : {
+      revenue: r2(wGmv), grossProfit: null, grossMargin: null, netProfit: null, netMargin: null,
+      economicNetProfit: null, incrementalGrossProfit: null, incrementalNetProfit: null,
+      incrementalEconomicNetProfit: null, incrementalNetProfitRate: null,
+      missingReason: '缺少供货价或销量，托盘商利润不可用（不以 0 成本或估算价代替真实价格）'
+    },
+    brand: brandEconOK ? {
+      revenue: r2(wBrandRevenue),
+      grossProfit: r2(wBrandGross), grossMargin: marginOf(wBrandGross, wBrandRevenue),
+      netProfit: r2(wBrandNet), netMargin: marginOf(wBrandNet, wBrandRevenue),
+      incrementalGrossProfit: incBrandGross === null ? null : r2(incBrandGross),
+      incrementalNetProfit: incBrandNet === null ? null : r2(incBrandNet),
+      incrementalNetProfitRate: incBrandNetRate
+    } : {
+      revenue: distEconOK ? r2(wBrandRevenue) : null, grossProfit: null, grossMargin: null,
+      netProfit: null, netMargin: null, incrementalGrossProfit: null, incrementalNetProfit: null,
+      incrementalNetProfitRate: null,
+      missingReason: '缺少成本价，品牌利润不可用（不影响 GMV 增量与已有供价支持的托盘商利润）'
+    },
+    investment: { brandInvestment: r2(invest), consumerPriceSubsidy: r2(consumerSub), distributorRebate: r2(rebate), legacyActivityPriceSubsidy: r2(act.activityPriceSubsidy), totalBrandInvestment: r2(totalInvest) },
+    baseline: {
+      weeks: blN, configured: act.baselinePeriods,
+      usedPeriods: baselineWeeks.map(w => w.periodId), skippedPeriods: baselineSkipped.map(w => w.periodId),
+      weekly: blN > 0 ? {
+        gmv: r2(blGmvW), sales: r2(blSalesW),
+        distGross: blDistGrossW === null ? null : r2(blDistGrossW),
+        distNet: blDistNetW === null ? null : r2(blDistNetW),
+        brandGross: blBrandGrossW === null ? null : r2(blBrandGrossW),
+        brandNet: blBrandNetW === null ? null : r2(blBrandNetW)
+      } : null
+    },
+    post: {
+      observedWeeks: postObserved.length, expectedWeeks: postP,
+      calendarAvailable: postCalendarAvailable, missingWeeks: postMissingWeeks.length,
+      complete: postCompleteNow,
+      gmv: r2(pGmv), sales: r2(pSales),
+      distGross: postDistGross === null ? null : r2(postDistGross),
+      distNet: postDistNet === null ? null : r2(postDistNet),
+      brandGross: postBrandGross === null ? null : r2(postBrandGross),
+      brandNet: postBrandNet === null ? null : r2(postBrandNet),
+      incrementalGmv: postIncGmv === null ? null : r2(postIncGmv)
+    },
+    profitInvestment: profitInvestment === null ? null : r2(profitInvestment, 4)
+  };
+
+  /* ---------- Baseline 不足降级（规则二十二）：参考展示，绝不冒充 Incremental ROI ---------- */
+  if (!baselineReliable) {
+    return {
+      error: `Baseline不足，无法计算可靠增量ROI及增量利润（实际仅 ${blN} 个有效 Baseline 周）`,
+      status: 'baseline_insufficient',
+      baselineInfo: { configured: act.baselinePeriods, actual: blN },
+      activityGmvRatio: totalInvest > 0 ? windowVal / totalInvest : null,
+      economics, economicRisk, reliability, attributionOverlap, finalAllowed: false,
+      diagnosis: { ...diagnosis, dataCompleteness: 'baseline不足' }
+    };
+  }
+
+  const result = calculateActivityROI({
+    baselineSales, activityWeekSellOut, activityWindowSellOut: windowVal,
+    windowObservedWeeks: windowObserved.length, windowPeriods: winP,
+    postActivitySales, postPeriodsRequired: postP,
+    postCalendarAvailable, postMissingWeeks: postMissingWeeks.length,
+    brandInvestment: act.brandInvestment, activityPriceSubsidy: act.activityPriceSubsidy,
+    consumerPriceSubsidy: act.consumerPriceSubsidy, distributorRebate: act.distributorRebate
+  });
+
+  /* ---------- 暂估门控：窗口未满 / 观察期未满 / 完整性未确认 → 不给最终评级、最终质量分类 ---------- */
+  if (!windowFullyObserved && result.evaluation) {
+    result.evaluation.grade = '—';
+    result.evaluation.label = '观察中';
+    result.evaluation.recommendation = `活动窗口未完整观察（${windowObserved.length}/${winP}周），暂估对比按已观察 ${windowObserved.length} 周与 Baseline 同口径计算，数据补齐后自动转正常定级`;
+    result.evaluation.provisional = true;
+  }
+  if (result.postActivity && !result.postActivity.observationComplete && result.evaluation && result.evaluation.grade !== '—') {
+    result.evaluation.grade = '—';
+    result.evaluation.label = '观察中';
+    result.evaluation.recommendation = '活动后观察期未满或存在缺周，暂不定级';
+    result.evaluation.provisional = true;
+  }
+  if (reliability === 'assumed' && result.evaluation) {
+    result.evaluation.grade = '—';
+    result.evaluation.label = '暂估';
+    result.evaluation.recommendation = '按稀疏数据假设测算，完整性未确认；重新上传对应周数据写入覆盖元数据后可转最终评级';
+    result.evaluation.provisional = true;
+  }
+  if (result.return?.status === 'no_positive_increment') economicRisk.push('no_positive_increment');
+
+  const roiVal = result.return?.incrementalSellOutROI;
+  const persistVal = result.postActivity?.persistenceRate;
+  const quality = finalAllowed ? classifyQuality(roiVal, persistVal) : null;
+  const conclusion = buildConclusion({
+    roiVal, persistVal, brandNet: wBrandNet, distEconNet: wDistEconNet,
+    finalAllowed,
+    caveat: reliability === 'assumed' ? '按稀疏数据假设测算，完整性未确认' : null
+  });
+
+  // 增量价值覆盖判断（可多条同时成立）
+  const coverageNotes = [];
+  if (canIncremental) {
+    if (incBrandGross !== null && incBrandGross > 0 && incBrandNet !== null && incBrandNet < 0) coverageNotes.push({ type: 'warn', text: '增量毛利为正，但未覆盖活动投入' });
+    if (incBrandNet !== null && incBrandNet >= 0) coverageNotes.push({ type: 'ok', text: '增量价值已覆盖活动投入' });
+    if (incBrandNet !== null && incBrandNet > 0 && profitInvestment !== null && profitInvestment >= 0.5) coverageNotes.push({ type: 'ok', text: '增量利润具备较好投入回报' });
+    if (profitInvestment !== null && profitInvestment >= 1) coverageNotes.push({ type: 'ok', text: '每投入 ¥1 活动成本，额外产生 ≥ ¥1 增量净利' });
+  }
+
+  // 「怎么看这场活动？」经营解释（规则六：文案按数据真实状态生成）
+  const interpretNotes = [];
+  if (canIncremental) {
+    if (incBrandNet !== null && incBrandNet < 0) {
+      const netG = economics.terminal.netIncrementalSellout;
+      // 只有实际净增量GMV > 0 时才能写「虽然产生增量销售」
+      interpretNotes.push((netG !== null && netG > 0 ? '活动虽然产生了增量销售，但' : '') + '相对 Baseline，新增经营收益未覆盖投入，或整体经营贡献低于 Baseline。');
+    }
+    if (incBrandNet !== null && incBrandNet >= 0 && profitInvestment !== null && profitInvestment >= 1) interpretNotes.push('活动新增利润已经覆盖全部活动投入，具备较强经济价值。');
+    const roiHigh = toMetricNumber(roiVal) !== null && Number(roiVal) >= 1;
+    if (roiHigh && profitInvestment !== null && profitInvestment < 0.5) interpretNotes.push('销售效率较高，但利润转化效率偏低，需检查折扣、补贴、返利及产品毛利结构。');
+  }
+  // 持续性文案：null / 0 / >0 / <0 四态分明，不把所有 >=0 写成「较强持续性」
+  if (persistVal === null || persistVal === undefined) {
+    interpretNotes.push('持续性待观察或不可计算。');
+  } else {
+    const pNum = Number(persistVal);
+    if (Number.isFinite(pNum)) {
+      if (Math.abs(pNum) < 0.005) interpretNotes.push('观察期回到 Baseline 附近，未保留正向增量。');
+      else if (pNum > 0) interpretNotes.push(`活动结束后保留正向增量（持续性 ${(pNum * 100).toFixed(1)}%）。`);
+      else interpretNotes.push('活动后低于 Baseline，存在透支信号。');
+    }
+  }
+
+  // 互斥主状态（规则五）：completed / observing / insufficient / invalid 之和必须等于活动总数
+  let primaryStatus = 'observing';
+  if (result.return?.status === 'investment_not_applicable') primaryStatus = 'invalid';
+  else if (finalAllowed) primaryStatus = 'completed';
+
+  return { ...result, economics, economicRisk, quality, conclusion, coverageNotes, interpretNotes, diagnosis, reliability, finalAllowed, attributionOverlap, primaryStatus, status: 'ok' };
 }
 
 function SkuPicker({ skuMaster, selectedCodes, onChange, mode }) {
@@ -4405,7 +4967,7 @@ function SkuPicker({ skuMaster, selectedCodes, onChange, mode }) {
   );
 }
 
-function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, activities, setActivities, cost, supply, opRate, isReadOnly }) {
+function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, activities, setActivities, cost, supply, opRate, isReadOnly, dataCoverage }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -4455,40 +5017,6 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     return { ...act, skuMode, activityChannel, activityPriceSubsidy: legacySubsidy, consumerPriceSubsidy, distributorRebate };
   };
 
-  const getActivityChannelMetricValue = (channel, code, idx) => {
-    if (!channel || channel === 'ALL') {
-      const v = skuWeeks?.[code]?.[idx]?.gmv;
-      return v === undefined ? undefined : Number(v);
-    }
-    const v = channelSkuWeekly?.[code]?.[channel]?.[idx]?.gmv;
-    return v === undefined ? undefined : Number(v);
-  };
-
-  // 销量口径：全渠道 skuWeeks 用 sales；渠道 SKU 周数据用 vol
-  const getActivityChannelSalesValue = (channel, code, idx) => {
-    if (!channel || channel === 'ALL') {
-      const cell = skuWeeks?.[code]?.[idx];
-      if (!cell || typeof cell !== 'object') return undefined;
-      return cell.sales === undefined ? undefined : Number(cell.sales);
-    }
-    const cell = channelSkuWeekly?.[code]?.[channel]?.[idx];
-    if (!cell || typeof cell !== 'object') return undefined;
-    const v = cell.vol !== undefined ? cell.vol : cell.sales;
-    return v === undefined ? undefined : Number(v);
-  };
-
-  // 记录存在性：missing ≠ 0。空对象 {} 视为缺失；显式 {gmv:0,sales:0} 是真实0销量
-  const hasRecordAt = (channel, code, idx) => {
-    const cell = (!channel || channel === 'ALL') ? skuWeeks?.[code]?.[idx] : channelSkuWeekly?.[code]?.[channel]?.[idx];
-    if (!cell || typeof cell !== 'object') return false;
-    return toMetricNumber(cell.gmv) !== null || toMetricNumber(cell.sales) !== null || toMetricNumber(cell.vol) !== null;
-  };
-
-  const channelHasData = (channel, code, idx) => {
-    if (!channel || channel === 'ALL') return true;
-    return !!(channelSkuWeekly?.[code]?.[channel]?.[idx]);
-  };
-
   const getGradeFromROI = (roi, observationComplete) => {
     if (!observationComplete) return '—';
     if (roi >= ROI_CONFIG.gradeThresholds.S) return 'S';
@@ -4498,468 +5026,118 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     return 'D';
   };
 
-  // 经营质量分类（规则二十四/二十五）：X=Incremental ROI（1x 投入回本线为界），Y=Persistence（0 为界）
-  const classifyQuality = (roiVal, persistVal) => {
-    const p = Number(persistVal);
-    if (!Number.isFinite(p)) return null;
-    if (roiVal !== Infinity && toMetricNumber(roiVal) === null) return null;
-    const roiHigh = roiVal === Infinity || Number(roiVal) >= 1;
-    const persistHigh = p >= 0;
-    if (roiHigh && persistHigh) return 'strategic';
-    if (roiHigh && !persistHigh) return 'explosive';
-    if (!roiHigh && persistHigh) return 'cultivation';
-    return 'consumptive';
-  };
-  const QUALITY_META = {
-    strategic: { label: '战略型活动', desc: '当期增量效率高，活动结束后仍能保留增量', color: '#16a34a' },
-    explosive: { label: '爆发型活动', desc: '活动期间有效，但持续性弱，可能为一次性促销/节点驱动', color: '#ea580c' },
-    cultivation: { label: '培育型活动', desc: '当期投放效率一般，但对渠道/用户/销售持续性存在价值', color: '#0d9488' },
-    consumptive: { label: '消耗型活动', desc: '既没有明显增量效率，也没有形成持续增长', color: '#dc2626' }
-  };
-  const RISK_META = {
-    normal: { label: '正常', color: '#16a34a' },
-    brand_loss: { label: '风险：品牌净利为负', color: '#dc2626' },
-    baseline_insufficient: { label: 'Baseline不足', color: '#d97706' },
-    window_incomplete: { label: '窗口未满', color: '#d97706' },
-    observing: { label: '观察中', color: '#2563eb' }
-  };
-
-  // 自动经营结论（规则二十八）：效率、持续性、双方经济结果多维并列，不压缩成单一总分
-  const buildConclusion = ({ roiVal, persistVal, brandNet, distEconNet }) => {
-    const p = Number(persistVal);
-    const roiKnown = roiVal === Infinity || toMetricNumber(roiVal) !== null;
-    if (!roiKnown && !Number.isFinite(p)) return null;
-    const roiHigh = roiVal === Infinity || (roiKnown && Number(roiVal) >= 1);
-    const persistHigh = Number.isFinite(p) ? p >= 0 : false;
-    const brandOk = Number(brandNet) > 0;
-    const distOk = Number(distEconNet) > 0;
-    if (roiHigh && persistHigh && brandOk && distOk) return '优质活动：增量效率高、持续性强，且品牌与托盘商均保持正向经济收益，具备复制价值。';
-    if (roiHigh && persistHigh && !brandOk) return '高效率但低经济质量：活动带来了明显增量与持续性，但品牌最终净利为负，应优先检查活动投入及补贴结构。';
-    if (roiHigh && !persistHigh && brandOk) return '爆发型活动：活动期增量效率较高，但持续性有限，更适合节点型活动，不宜直接判断为长期增长引擎。';
-    if (!roiHigh && persistHigh && brandOk) return '培育型活动：短期效率一般，但活动后的销售保持较好，建议从长期渠道价值而非单场ROI判断。';
-    if (!roiHigh && !persistHigh && !brandOk) return '消耗型活动：短期没有形成有效增量，活动后也未形成持续改善，同时品牌净利为负，应考虑停止或重构。';
-    if (!roiHigh && !persistHigh) return '短期增量效率与活动后持续性均偏弱，建议复盘活动机制与投入结构后再决定是否继续。';
-    if (!roiHigh && persistHigh) return '培育型活动：短期效率一般，活动后保持一定增量，但需关注品牌净利水平，避免以补贴维持表面持续性。';
-    return '效率与经济结果不完全同向：建议结合增量利润与双方净利结构进一步复盘。';
-  };
-
-  const calculateForActivity = (rawAct) => {
-    const act = normalizeActivity(rawAct);
-    const startIdx = getPeriodIdx(act.startWeek);
-    if (startIdx < 0) return { error: `起始周 "${act.startWeek}" 不在时间轴中，当前可用周期：${PERIODS.map(p => p.label).join('、')}` };
-
-    const activityChannel = act.activityChannel || 'ALL';
-    const isAllChannels = !activityChannel || activityChannel === 'ALL';
-
-    const validSkus = (act.skuMode === 'all' ? skuMaster.map(s => s.code) : (act.skuCodes || []))
-      .filter(code => skuMaster.some(s => s.code === code));
-    if (validSkus.length === 0) return { error: '未选择有效 SKU' };
-
-    if (!isAllChannels && hasChannelSkuData) {
-      let hasAnyData = false;
-      for (const code of validSkus) {
-        for (let i = 0; i < PERIODS.length; i++) {
-          if (channelHasData(activityChannel, code, i)) { hasAnyData = true; break; }
-        }
-        if (hasAnyData) break;
-      }
-      if (!hasAnyData) {
-        return {
-          error: `该平台（${activityChannel}）暂无 SKU 周度终端纯销数据，无法计算该活动 ROI。请先上传该平台的 SKU×周度数据。`,
-          diagnosis: { startWeek: act.startWeek, startIdx, activityChannel, validSkuCount: validSkus.length, baselineAvailable: 0, baselineRequired: act.baselinePeriods, windowAvailable: 0, windowRequired: act.windowPeriods, postAvailable: 0, postRequired: act.postPeriods, windowWeeks: [], postWeeks: [] }
-        };
-      }
-    }
-
-    /* 周有效性判定（v3.1 修正）：
-       渠道/SKU 周销数据为稀疏记录——仅当周有动销的 SKU 才有行，无行 = 当周未售货 = 真实 0，而非上传缺口。
-       - Baseline 有效周：整周 ≥1 个 SKU 有记录（与 v2 口径一致）；整周无任何记录才算上传缺口，跳过。
-       - 周内无记录 SKU 贡献 0（真实 0 销量与未动销在 GMV 口径下等价）。
-       - 注：v3.0 曾按 every() 要求全部 SKU 有行才算完整周，稀疏数据下会误判为 0 个可用 Baseline 周，已废止；
-         fullCoverage 仅保留为诊断信息，不作为 Baseline 过滤条件。 */
-    const hasAnyRecordAt = (idx) => validSkus.some(code => hasRecordAt(activityChannel, code, idx));
-    const isCompleteWeekAt = (idx) => hasAnyRecordAt(idx);
-    const isFullCoverageAt = (idx) => validSkus.every(code => hasRecordAt(activityChannel, code, idx));
-    const missingSkusAt = (idx) => validSkus.filter(code => !hasRecordAt(activityChannel, code, idx));
-
-    const getVal = (idx) => {
-      if (!hasAnyRecordAt(idx)) return null;
-      return validSkus.reduce((sum, code) => {
-        const v = getActivityChannelMetricValue(activityChannel, code, idx);
-        return Number.isFinite(v) ? sum + v : sum;
-      }, 0);
-    };
-
-    // 单周聚合：GMV / 销量 / 托盘商成本(供货价×销量) / 品牌成本(成本价×销量)，复用 cost/supply 价格体系（规则三）
-    const weekAggAt = (idx) => {
-      if (!hasAnyRecordAt(idx)) return null;
-      let gmv = 0, sales = 0, distCOGS = 0, brandCOGS = 0;
-      validSkus.forEach(code => {
-        const g = getActivityChannelMetricValue(activityChannel, code, idx);
-        const s = getActivityChannelSalesValue(activityChannel, code, idx);
-        const gv = Number.isFinite(g) ? g : 0;
-        const sv = Number.isFinite(s) ? s : 0;
-        gmv += gv; sales += sv;
-        distCOGS += toSafeNum(supply?.[code], 0) * sv;
-        brandCOGS += toSafeNum(cost?.[code], 0) * sv;
-      });
-      return { idx, gmv, sales, distCOGS, brandCOGS, complete: isFullCoverageAt(idx), missingSkus: missingSkusAt(idx) };
-    };
-
-    // Baseline 自适应：actualBaselinePeriods = min(配置, startIdx)，纳入所有有效周（整周≥1条记录；规则二十，v3.1 口径）
-    const actualBaselinePeriods = Math.min(act.baselinePeriods, startIdx);
-    const baselineWeekAggs = [];
-    for (let i = startIdx - 1; i >= 0 && baselineWeekAggs.length < actualBaselinePeriods; i--) {
-      if (!isCompleteWeekAt(i)) continue;
-      const agg = weekAggAt(i);
-      if (agg) baselineWeekAggs.push(agg);
-    }
-    const baselineSales = baselineWeekAggs.map(w => w.gmv);
-
-    const activityWeekSellOut = getVal(startIdx) || 0;
-
-    // Activity Window 聚合（主口径，与 Post Observation 分开）
-    const windowWeekAggs = [];
-    let windowVal = 0;
-    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) {
-      const wv = getVal(i); windowVal += (wv === null ? 0 : wv);
-      const agg = weekAggAt(i);
-      if (agg) windowWeekAggs.push(agg);
-    }
-
-    // Post Observation 聚合：未观察到的未来周不计入（不当 0）
-    const postWeekAggs = [];
-    const postActivitySales = [];
-    for (let i = startIdx + act.windowPeriods; i < startIdx + act.windowPeriods + act.postPeriods && i < PERIODS.length; i++) {
-      const pv = getVal(i); postActivitySales.push(pv === null ? 0 : pv);
-      const agg = weekAggAt(i);
-      if (agg) postWeekAggs.push(agg);
-    }
-
-    const diagnosis = {
-      startWeek: act.startWeek, startIdx,
-      activityChannel: isAllChannels ? 'ALL（全渠道兼容）' : activityChannel,
-      validSkuCount: validSkus.length,
-      baselineAvailable: baselineSales.length, baselineRequired: act.baselinePeriods,
-      actualBaselinePeriods,
-      windowAvailable: Math.min(act.windowPeriods, Math.max(0, PERIODS.length - startIdx)), windowRequired: act.windowPeriods,
-      postAvailable: postActivitySales.length, postRequired: act.postPeriods,
-      windowWeeks: [], postWeeks: []
-    };
-    for (let i = startIdx; i < startIdx + act.windowPeriods && i < PERIODS.length; i++) {
-      const hasData = hasAnyRecordAt(i);
-      const wv = getVal(i);
-      const gmv = wv === null ? 0 : wv;
-      diagnosis.windowWeeks.push({ label: PERIODS[i]?.label, idx: i, gmv, hasData });
-    }
-    for (let i = startIdx + act.windowPeriods; i < startIdx + act.windowPeriods + act.postPeriods && i < PERIODS.length; i++) {
-      const hasData = hasAnyRecordAt(i);
-      const pv = getVal(i);
-      const gmv = pv === null ? 0 : pv;
-      diagnosis.postWeeks.push({ label: PERIODS[i]?.label, idx: i, gmv, hasData });
-    }
-
-    // v3.2（规则二十三）：missing 诊断——收集各阶段内未动销/无记录的 SKU×周，
-    // 供 UI 展示「XX SKU 在 XX 周缺少数据」。稀疏上传语义下无行 = 未动销 = 真实 0，仅作诊断展示，不影响计算。
-    diagnosis.missingPeriods = [];
-    const collectMissing = (aggs, stage) => {
-      aggs.forEach(w => {
-        if (w && Array.isArray(w.missingSkus) && w.missingSkus.length > 0) {
-          diagnosis.missingPeriods.push({ stage, period: PERIODS[w.idx]?.label, missingSkus: w.missingSkus.slice() });
-        }
-      });
-    };
-    collectMissing(baselineWeekAggs, 'Baseline');
-    collectMissing(windowWeekAggs, 'Activity Window');
-    collectMissing(postWeekAggs, 'Post Observation');
-
-    /* ================= Activity Economics（活动经营利润，规则五十四集中计算） =================
-       经济链条：GNC品牌方 --供货价--> 托盘商 --终端成交价--> C端
-       托盘商净利沿用系统 opRate；品牌净利 = 品牌毛利 - 品牌投入 - 消费者端价格补贴 - 托盘商返利 */
-    const op = Math.min(90, Math.max(0, toSafeNum(opRate, 0))) / 100;
-    const winP = Math.max(1, Number(act.windowPeriods) || 1);
-    const sumAgg = (arr, k) => arr.reduce((t, w) => t + (toMetricNumber(w?.[k]) ?? 0), 0);
-    const wGmv = sumAgg(windowWeekAggs, 'gmv'), wSales = sumAgg(windowWeekAggs, 'sales');
-    const wDistCOGS = sumAgg(windowWeekAggs, 'distCOGS'), wBrandCOGS = sumAgg(windowWeekAggs, 'brandCOGS');
-    const invest = Math.max(0, toSafeNum(act.brandInvestment, 0));
-    const consumerSub = act.consumerPriceSubsidy;
-    const rebate = act.distributorRebate;
-    const totalInvest = invest + consumerSub + rebate;
-
-    const wDistGross = wGmv - wDistCOGS;
-    const wDistNet = wGmv * (1 - op) - wDistCOGS;
-    const wDistEconNet = wDistNet + rebate;
-    const wBrandRevenue = wDistCOGS;
-    const wBrandGross = wDistCOGS - wBrandCOGS;
-    const wBrandNet = wBrandGross - invest - consumerSub - rebate;
-    const marginOf = (p, r) => (Number.isFinite(p) && Number.isFinite(r) && r > 0 ? p / r : null);
-
-    // Baseline 周均利润（Baseline 不扣活动投入，规则十四）
-    const blN = baselineWeekAggs.length;
-    const blGmvW = blN > 0 ? sumAgg(baselineWeekAggs, 'gmv') / blN : null;
-    const blSalesW = blN > 0 ? sumAgg(baselineWeekAggs, 'sales') / blN : null;
-    const blDistCOGSW = blN > 0 ? sumAgg(baselineWeekAggs, 'distCOGS') / blN : null;
-    const blBrandCOGSW = blN > 0 ? sumAgg(baselineWeekAggs, 'brandCOGS') / blN : null;
-    const blDistGrossW = blN > 0 ? blGmvW - blDistCOGSW : null;
-    const blDistNetW = blN > 0 ? blGmvW * (1 - op) - blDistCOGSW : null;
-    const blBrandGrossW = blN > 0 ? blDistCOGSW - blBrandCOGSW : null;
-    const blBrandNetW = blBrandGrossW;
-
-    // 增量利润：Baseline 周均 × 活动窗口周数（规则十六）；Baseline < 2 周时不计算（规则二十二）
-    const canIncremental = blN >= 2;
-    const incDistGross = canIncremental ? wDistGross - blDistGrossW * winP : null;
-    const incDistNet = canIncremental ? wDistNet - blDistNetW * winP : null;
-    const incDistEconNet = canIncremental ? wDistEconNet - blDistNetW * winP : null;
-    const incBrandGross = canIncremental ? wBrandGross - blBrandGrossW * winP : null;
-    const incBrandNet = canIncremental ? wBrandNet - blBrandNetW * winP : null;
-    const incBrandNetRate = canIncremental ? marginOf(incBrandNet, wBrandRevenue) : null;
-    const incDistNetRate = canIncremental ? marginOf(incDistEconNet, wGmv) : null;
-
-    // v3.2（规则二十/二十六）：Incremental Net Profit / Investment = 品牌增量净利 ÷ 品牌真实投入合计
-    // 与 Incremental ROI（新增终端纯销效率）并列，不互相替代；分母 ≤0 或增量不可算时为 null
-    const profitInvestment = (canIncremental && incBrandNet !== null && totalInvest > 0) ? incBrandNet / totalInvest : null;
-
-    // Post Observation 经济（规则五十五）：投入只归属活动窗口，Post 不重复扣减（规则三十七）
-    const pGmv = sumAgg(postWeekAggs, 'gmv'), pSales = sumAgg(postWeekAggs, 'sales');
-    const pDistCOGS = sumAgg(postWeekAggs, 'distCOGS'), pBrandCOGS = sumAgg(postWeekAggs, 'brandCOGS');
-    const pObserved = postWeekAggs.length;
-    const postDistGross = pGmv - pDistCOGS;
-    const postDistNet = pGmv * (1 - op) - pDistCOGS;
-    const postBrandGross = pDistCOGS - pBrandCOGS;
-    const postBrandNet = postBrandGross;
-    const postIncGmv = canIncremental ? pGmv - blGmvW * pObserved : null;
-
-    const economics = {
-      terminal: {
-        gmv: r2(wGmv), sales: r2(wSales),
-        avgSellPrice: wSales > 0 ? r2(wGmv / wSales) : null,
-        baselineWeeklyGmv: blGmvW === null ? null : r2(blGmvW),
-        baselineWindowGmv: canIncremental ? r2(blGmvW * winP) : null,
-        incrementalSellout: canIncremental ? r2(Math.max(0, wGmv - blGmvW * winP)) : null
-      },
-      distributor: {
-        revenue: r2(wGmv),
-        grossProfit: r2(wDistGross), grossMargin: marginOf(wDistGross, wGmv),
-        netProfit: r2(wDistNet), netMargin: marginOf(wDistNet, wGmv),
-        economicNetProfit: r2(wDistEconNet),
-        incrementalGrossProfit: incDistGross === null ? null : r2(incDistGross),
-        incrementalNetProfit: incDistNet === null ? null : r2(incDistNet),
-        incrementalEconomicNetProfit: incDistEconNet === null ? null : r2(incDistEconNet),
-        incrementalNetProfitRate: incDistNetRate
-      },
-      brand: {
-        revenue: r2(wBrandRevenue),
-        grossProfit: r2(wBrandGross), grossMargin: marginOf(wBrandGross, wBrandRevenue),
-        netProfit: r2(wBrandNet), netMargin: marginOf(wBrandNet, wBrandRevenue),
-        incrementalGrossProfit: incBrandGross === null ? null : r2(incBrandGross),
-        incrementalNetProfit: incBrandNet === null ? null : r2(incBrandNet),
-        incrementalNetProfitRate: incBrandNetRate
-      },
-      investment: { brandInvestment: r2(invest), consumerPriceSubsidy: r2(consumerSub), distributorRebate: r2(rebate), legacyActivityPriceSubsidy: r2(act.activityPriceSubsidy), totalBrandInvestment: r2(totalInvest) },
-      baseline: {
-        weeks: blN, configured: act.baselinePeriods,
-        weekly: blN > 0 ? { gmv: r2(blGmvW), sales: r2(blSalesW), distGross: r2(blDistGrossW), distNet: r2(blDistNetW), brandGross: r2(blBrandGrossW), brandNet: r2(blBrandNetW) } : null
-      },
-      post: {
-        observedWeeks: pObserved, expectedWeeks: act.postPeriods,
-        complete: pObserved >= act.postPeriods,
-        gmv: r2(pGmv), sales: r2(pSales),
-        distGross: r2(postDistGross), distNet: r2(postDistNet),
-        brandGross: r2(postBrandGross), brandNet: r2(postBrandNet),
-        incrementalGmv: postIncGmv === null ? null : r2(postIncGmv)
-      },
-      // v3.2：增量净利润投入比（品牌增量净利 / 品牌真实投入合计）
-      profitInvestment: profitInvestment === null ? null : r2(profitInvestment, 4)
-    };
-
-    // Economic Risk（规则四十二）：与 ROI Grade 并列存在，不覆盖（规则二十三）
-    const wAvailNow = Math.min(act.windowPeriods, Math.max(0, PERIODS.length - startIdx));
-    const windowCompleteNow = wAvailNow >= act.windowPeriods;
-    const postCompleteNow = postActivitySales.length >= act.postPeriods;
-    const economicRisk = [];
-    if (!canIncremental) economicRisk.push('baseline_insufficient');
-    // v3.2（规则十八）：增量毛利为正但增量净利为负（未覆盖活动投入），同样标记 Brand Loss
-    if (wBrandNet < 0 || (canIncremental && incBrandGross > 0 && incBrandNet < 0)) economicRisk.push('brand_loss');
-    if (!windowCompleteNow) economicRisk.push('window_incomplete');
-    if (!postCompleteNow) economicRisk.push('observing');
-    if (economicRisk.length === 0) economicRisk.push('normal');
-
-    // Baseline 自适应降级：actualBaseline >= 2 才计算可靠 Incremental ROI 及增量利润（规则二十二）
-    if (baselineSales.length < 2) {
-      return {
-        error: `Baseline不足，无法计算可靠增量ROI及增量利润（实际仅 ${baselineSales.length} 个有效 Baseline 周）`,
-        status: 'baseline_insufficient',
-        baselineInfo: { configured: act.baselinePeriods, actual: baselineSales.length },
-        // 仅作参考展示，绝不冒充 Incremental ROI（规则二十二）
-        activityGmvRatio: totalInvest > 0 ? windowVal / totalInvest : null,
-        economics,
-        economicRisk,
-        diagnosis: { ...diagnosis, dataCompleteness: 'baseline不足' }
-      };
-    }
+  // v3.6：薄封装——所有计算下沉到全局纯函数 calculateActivityCore（同源单次计算，可单测）
+  const calculateForActivity = (rawAct) => calculateActivityCore({
+    act: normalizeActivity(rawAct),
+    PERIODS, skuMaster, skuWeeks, channelSkuWeekly, cost, supply, opRate,
+    dataCoverage, activities, hasChannelSkuData
+  });
 
 
-    const result = calculateActivityROI({
-      baselineSales, activityWeekSellOut, activityWindowSellOut: windowVal, windowPeriods: act.windowPeriods,
-      postActivitySales, postPeriodsRequired: act.postPeriods, brandInvestment: act.brandInvestment, activityPriceSubsidy: act.activityPriceSubsidy,
-      consumerPriceSubsidy: act.consumerPriceSubsidy, distributorRebate: act.distributorRebate
-    });
-
-    // Window Available < Window Required：窗口未满，Grade="—"，状态="观察中"，数据补齐后自动转正常定级
-    const wAvail = Math.min(act.windowPeriods, Math.max(0, PERIODS.length - startIdx));
-    if (wAvail < act.windowPeriods) {
-      if (result.evaluation) {
-        result.evaluation.grade = '—';
-        result.evaluation.label = '观察中';
-        result.evaluation.recommendation = `活动窗口未满（${wAvail}/${act.windowPeriods}周），暂不定级`;
-      }
-    }
-
-    // Post Available < Post Required：可计算当前ROI，但Grade="—"，状态="观察中"
-    if (postActivitySales.length < act.postPeriods) {
-      if (result.evaluation) {
-        result.evaluation.grade = '—';
-        result.evaluation.label = '观察中';
-        result.evaluation.recommendation = '活动后观察期未满，暂不定级';
-      }
-      if (result.postActivity) {
-        result.postActivity.observationComplete = false;
-      }
-    }
-
-
-    // 活动重叠风险诊断
-    const overlapWarnings = [];
-    activities.forEach(otherAct => {
-      if (otherAct.id === act.id) return;
-      const otherStart = getPeriodIdx(otherAct.startWeek);
-      if (otherStart < 0) return;
-      const otherEnd = otherStart + (otherAct.windowPeriods || 3);
-      const thisEnd = startIdx + (act.windowPeriods || 3);
-      const overlapStart = Math.max(startIdx, otherStart);
-      const overlapEnd = Math.min(thisEnd, otherEnd);
-      if (overlapEnd > overlapStart) {
-        const overlapWeeks = overlapEnd - overlapStart;
-        overlapWarnings.push(`⚠ 与「${otherAct.name}」活动窗口重叠${overlapWeeks}周，当前ROI可能存在归因重叠。`);
-      }
-    });
-    if (overlapWarnings.length > 0 && diagnosis) {
-      diagnosis.overlapWarnings = overlapWarnings;
-    }
-
-    const roiVal = result.return?.incrementalSellOutROI;
-    const persistVal = result.postActivity?.persistenceRate;
-    const quality = classifyQuality(roiVal, persistVal);
-    const conclusion = buildConclusion({ roiVal, persistVal, brandNet: wBrandNet, distEconNet: wDistEconNet });
-
-    // v3.2（规则十八）：增量价值覆盖判断（可多条同时成立）
-    const coverageNotes = [];
-    if (canIncremental) {
-      if (incBrandGross > 0 && incBrandNet < 0) coverageNotes.push({ type: 'warn', text: '增量毛利为正，但未覆盖活动投入' });
-      if (incBrandNet >= 0) coverageNotes.push({ type: 'ok', text: '增量价值已覆盖活动投入' });
-      if (incBrandNet > 0 && profitInvestment !== null && profitInvestment >= 0.5) coverageNotes.push({ type: 'ok', text: '增量利润具备较好投入回报' });
-      if (profitInvestment !== null && profitInvestment >= 1) coverageNotes.push({ type: 'ok', text: '每投入 ¥1 活动成本，额外产生 ≥ ¥1 增量净利' });
-    }
-
-    // v3.2（规则二十七）：「怎么看这场活动？」经营解释（规则自动生成，可多条并列）
-    const interpretNotes = [];
-    if (canIncremental) {
-      if (incBrandNet < 0) interpretNotes.push('活动虽然产生了增量销售，但增量利润未覆盖品牌活动投入。');
-      if (incBrandNet >= 0 && profitInvestment !== null && profitInvestment >= 1) interpretNotes.push('活动新增利润已经覆盖全部活动投入，具备较强经济价值。');
-      const roiHigh = roiVal === Infinity || Number(roiVal) >= 1;
-      if (roiHigh && profitInvestment !== null && profitInvestment < 0.5) interpretNotes.push('销售效率较高，但利润转化效率偏低，需检查折扣、补贴、返利及产品毛利结构。');
-    }
-    const pNum = Number(persistVal);
-    if (Number.isFinite(pNum)) {
-      if (pNum >= 0) interpretNotes.push('活动结束后仍保持较强增量，具备较好的持续性。');
-      else interpretNotes.push('活动结束后增量快速衰减，可能主要依赖活动刺激。');
-    }
-
-    return { ...result, economics, economicRisk, quality, conclusion, coverageNotes, interpretNotes, diagnosis };
-  };
+  // v3.6（规则十）：每个活动在一轮数据变化后只计算一次；汇总/统计/矩阵/按钮/详情全部读取同一结果
+  const activityResultMap = useMemo(() => {
+    const m = {};
+    activities.forEach(act => { m[act.id] = calculateForActivity(act); });
+    return m;
+  }, [activities, skuWeeks, channelSkuWeekly, skuMaster, cost, supply, opRate, dataCoverage]);
 
   const platformSummary = useMemo(() => {
     const map = {};
     activities.forEach(act => {
       const ch = act.activityChannel || 'ALL';
-      const res = calculateForActivity(act);
+      const res = activityResultMap[act.id];
       if (res?.error || !res?.activityWindow) return;
       if (!map[ch]) {
-        map[ch] = { channel: ch, channelLabel: ch === 'ALL' ? '全渠道兼容' : ch, count: 0, totalInvestment: 0, totalWindowIncremental: 0, totalEffectiveIncremental: 0 };
+        map[ch] = { channel: ch, channelLabel: ch === 'ALL' ? '全渠道兼容' : ch, count: 0, totalInvestment: 0, includedInvestment: 0, totalWindowIncremental: 0, totalEffectiveIncremental: 0, included: 0, excluded: 0, hasOverlap: false };
       }
-      map[ch].count++;
-      map[ch].totalInvestment += (res.investment?.totalBrandInvestment || 0);
-      map[ch].totalWindowIncremental += (res.activityWindow?.windowIncrementalSellOut || 0);
-      map[ch].totalEffectiveIncremental += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
+      const row = map[ch];
+      row.count++;
+      row.totalInvestment += (res.investment?.totalBrandInvestment || 0);
+      if (res.attributionOverlap) row.hasOverlap = true;
+      // 正式汇总只纳入完整性已确认的活动（规则一.7）；已确认投入仍全额计入平台投入
+      if (res.reliability === 'confirmed') {
+        row.includedInvestment += (res.investment?.totalBrandInvestment || 0);
+        row.totalWindowIncremental += (res.activityWindow?.windowIncrementalSellOut || 0);
+        row.totalEffectiveIncremental += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
+        row.included++;
+      } else row.excluded++;
     });
     return Object.values(map).map(p => {
-      const roi = p.totalInvestment > 0 ? p.totalEffectiveIncremental / p.totalInvestment : 0;
-      const allObsComplete = activities.filter(a => (a.activityChannel || 'ALL') === p.channel).every(act => {
-      const res = calculateForActivity(act);
-      return res && !res.error && res.postActivity && res.postActivity.observationComplete;
+      const roi = (p.included > 0 && p.includedInvestment > 0) ? p.totalEffectiveIncremental / p.includedInvestment : null;
+      const allFinal = activities.filter(a => (a.activityChannel || 'ALL') === p.channel).every(act => {
+        const res = activityResultMap[act.id];
+        return res && !res.error && res.finalAllowed;
+      });
+      return { ...p, roi, grade: (roi === null || !allFinal) ? '—' : getGradeFromROI(roi, true) };
     });
-    return { ...p, roi, grade: getGradeFromROI(roi, allObsComplete) };
-    });
-  }, [activities, skuWeeks, channelSkuWeekly, skuMaster, cost, supply, opRate]);
+  }, [activities, activityResultMap]);
 
   const activityStats = useMemo(() => {
-    let completed = 0, observing = 0, validRoiCount = 0, totalInvestment = 0, totalEffective = 0, totalROI = 0;
-    // v3.2（规则二十）：增量/整体利润聚合；利润率一律 total profit / total revenue，禁止 average(margin)
-    let validPersistCount = 0, totalPersistence = 0;
-    let totalIncBrandGP = 0, totalIncBrandNP = 0, totalIncDistGP = 0, totalIncDistNP = 0;
-    let totalBrandGP = 0, totalBrandNP = 0, totalDistGP = 0, totalDistNP = 0;
-    const addIfFinite = (v) => (toMetricNumber(v) ?? 0);
+    // 互斥主状态：completed / observing / insufficient / invalid，数量之和 = total（规则五）
+    let completed = 0, observing = 0, insufficient = 0, invalid = 0;
+    let validRoiCount = 0, totalROI = 0, validPersistCount = 0, totalPersistence = 0;
+    let totalInvestmentAll = 0, totalInvestmentRoi = 0, totalEffective = 0, effectiveCount = 0;
+    // 利润聚合：无有效样本 → null（不补 0）；每个聚合记录纳入活动数（规则五）
+    const mkBucket = () => ({ sum: 0, included: 0 });
+    const incBrandGP = mkBucket(), incBrandNP = mkBucket(), incDistNP = mkBucket(), incDistEconNP = mkBucket();
+    const addProfit = (bucket, v) => { const n = toMetricNumber(v); if (n !== null) { bucket.sum += n; bucket.included++; } };
+    let overlapAny = false;
     activities.forEach(act => {
-      const res = calculateForActivity(act);
-      if (res?.error || !res?.return) return;
-      if (res.postActivity?.observationComplete) completed++; else observing++;
-      totalInvestment += (res.investment?.totalBrandInvestment || 0);
-      totalEffective += (res.effectiveIncremental?.effectiveIncrementalSellOut || 0);
-      const roi = res.return?.incrementalSellOutROI;
-      // ROI 平均值只统计有效 ROI：null / NaN / Infinity 一律不进入
-      if (Number.isFinite(roi)) { totalROI += roi; validRoiCount++; }
-      const persist = Number(res.postActivity?.persistenceRate);
-      if (Number.isFinite(persist)) { totalPersistence += persist; validPersistCount++; }
-      const E = res.economics;
-      if (E) {
-        totalIncBrandGP += addIfFinite(E.brand?.incrementalGrossProfit);
-        totalIncBrandNP += addIfFinite(E.brand?.incrementalNetProfit);
-        totalIncDistGP += addIfFinite(E.distributor?.incrementalGrossProfit);
-        totalIncDistNP += addIfFinite(E.distributor?.incrementalNetProfit);
-        totalBrandGP += addIfFinite(E.brand?.grossProfit);
-        totalBrandNP += addIfFinite(E.brand?.netProfit);
-        totalDistGP += addIfFinite(E.distributor?.grossProfit);
-        totalDistNP += addIfFinite(E.distributor?.netProfit);
+      const res = activityResultMap[act.id];
+      // 已确认投入全部计入「全部已录入投入」，含 Baseline 不足的活动（验收 H）
+      const inv = toMetricNumber(res?.investment?.totalBrandInvestment ?? res?.economics?.investment?.totalBrandInvestment);
+      if (inv !== null) totalInvestmentAll += inv;
+      if (!res || res.error) {
+        if (res?.status === 'baseline_insufficient') insufficient++; else invalid++;
+        return;
+      }
+      if (res.attributionOverlap) overlapAny = true;
+      if (res.primaryStatus === 'completed') completed++;
+      else if (res.primaryStatus === 'invalid') invalid++;
+      else observing++;
+      const persist = toMetricNumber(res.postActivity?.persistenceRate);
+      // 正式汇总只纳入完整性已确认的活动（规则一.7）：平均 ROI/Persistence、增量、利润合计均不含暂估活动
+      if (res.reliability === 'confirmed') {
+        if (persist !== null) { totalPersistence += persist; validPersistCount++; }
+        const roi = res.return?.incrementalSellOutROI;
+        // ROI 平均值只统计有效 ROI：null / NaN / Infinity 一律不进入
+        if (Number.isFinite(roi)) { totalROI += roi; validRoiCount++; if (inv !== null) totalInvestmentRoi += inv; }
+        const eff = toMetricNumber(res.effectiveIncremental?.effectiveIncrementalSellOut);
+        if (eff !== null) { totalEffective += eff; effectiveCount++; }
+        const E = res.economics;
+        if (E) {
+          addProfit(incBrandGP, E.brand?.incrementalGrossProfit);
+          addProfit(incBrandNP, E.brand?.incrementalNetProfit);
+          addProfit(incDistNP, E.distributor?.incrementalNetProfit);
+          addProfit(incDistEconNP, E.distributor?.incrementalEconomicNetProfit);
+        }
       }
     });
-    // 增量净利润投入比 = 总品牌增量净利 / 总品牌真实投入（总/总口径）
-    const incrementalProfitInvestment = totalInvestment > 0 ? totalIncBrandNP / totalInvestment : null;
+    // 增量净利润投入比 = 品牌增量净利合计 / ROI 可计算活动的投入（总/总口径）
+    const incrementalProfitInvestment = (incBrandNP.included > 0 && totalInvestmentRoi > 0) ? incBrandNP.sum / totalInvestmentRoi : null;
     return {
-      total: activities.length, completed, observing,
+      total: activities.length, completed, observing, insufficient, invalid,
       avgROI: validRoiCount > 0 ? totalROI / validRoiCount : null,
-      avgIncrementalROI: validRoiCount > 0 ? totalROI / validRoiCount : null,
+      roiIncluded: validRoiCount, roiExcluded: activities.length - validRoiCount,
       avgPersistence: validPersistCount > 0 ? totalPersistence / validPersistCount : null,
-      totalEffective, totalInvestment,
-      totalBrandInvestment: totalInvestment,
-      totalBrandTrueInvestment: totalInvestment,
-      totalIncrementalBrandGrossProfit: totalIncBrandGP,
-      totalIncrementalBrandNetProfit: totalIncBrandNP,
-      totalIncrementalDistributorGrossProfit: totalIncDistGP,
-      totalIncrementalDistributorNetProfit: totalIncDistNP,
-      totalBrandGrossProfit: totalBrandGP,
-      totalBrandNetProfit: totalBrandNP,
-      totalDistributorGrossProfit: totalDistGP,
-      totalDistributorNetProfit: totalDistNP,
+      totalEffective, effectiveIncluded: effectiveCount,
+      totalInvestment: totalInvestmentAll, totalInvestmentAll, totalInvestmentRoi,
+      totalIncrementalBrandGrossProfit: incBrandGP.included > 0 ? incBrandGP.sum : null,
+      totalIncrementalBrandNetProfit: incBrandNP.included > 0 ? incBrandNP.sum : null,
+      totalIncrementalDistributorNetProfit: incDistNP.included > 0 ? incDistNP.sum : null,
+      totalIncrementalDistributorEconomicNetProfit: incDistEconNP.included > 0 ? incDistEconNP.sum : null,
+      profitIncluded: incBrandNP.included, profitExcluded: activities.length - incBrandNP.included,
+      overlapAny,
       incrementalProfitInvestment
     };
-  }, [activities, skuWeeks, channelSkuWeekly, skuMaster, cost, supply, opRate]);
+  }, [activities, activityResultMap]);
 
-  // 经营质量矩阵数据（规则五十七）：仅 ROI 与 Persistence 均有限的活动进入；空数组安全（规则五十八）
+  // 经营质量矩阵数据：仅最终态（finalAllowed）活动进入；暂估/无正增量不强行生成矩阵象限；空数组安全
   const matrixPoints = useMemo(() => {
     const pts = [];
     activities.forEach(act => {
-      const res = calculateForActivity(act);
-      if (!res || res.error) return;
+      const res = activityResultMap[act.id];
+      if (!res || res.error || !res.finalAllowed) return;
       const roi = res.return?.incrementalSellOutROI;
       const persist = res.postActivity?.persistenceRate;
       if (toMetricNumber(roi) === null || toMetricNumber(persist) === null) return;
@@ -4979,13 +5157,13 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         incDistNet: res.economics?.distributor?.incrementalNetProfit ?? null,
         profitInvestment: res.economics?.profitInvestment ?? null,
         brandLoss: (() => { const _np = toMetricNumber(res.economics?.brand?.netProfit); return _np !== null && _np < 0; })(),
-        observing: !(res.postActivity?.observationComplete),
+        observing: false,
         economicRisk: res.economicRisk || ['normal'],
         quality: res.quality || classifyQuality(roi, persist)
       });
     });
     return pts;
-  }, [activities, skuWeeks, channelSkuWeekly, skuMaster, cost, supply, opRate]);
+  }, [activities, activityResultMap]);
 
   const resetForm = () => {
     setFName(''); setFActivityChannel(''); setFInvestment(''); setFConsumerSubsidy(''); setFRebate(''); setFSkus([]); setFSkuMode('all'); setEditingId(null);
@@ -5011,7 +5189,11 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
   };
 
   const handleSave = () => {
-    // 金额字段统一 Number 安全转换，非法输入不产生 NaN，且必须 >= 0（规则五十一/五十二）
+    // 金额字段：空白 = 未填写（按 0 处理），但非法金额不得被静默改成 0（规则三）
+    const illegal = [['品牌基础投入', fInvestment], ['消费者端价格补贴', fConsumerSubsidy], ['托盘商返利 / 补贴', fRebate]]
+      .filter(([, v]) => v !== '' && v !== null && v !== undefined && !Number.isFinite(Number(v)))
+      .map(([n]) => n);
+    if (illegal.length > 0) { alert('金额格式非法：' + illegal.join('、') + '，请修正后再保存（不会自动按 0 处理）'); return; }
     const investment = Math.max(0, toSafeNum(fInvestment, 0));
     const consumerSub = Math.max(0, toSafeNum(fConsumerSubsidy, 0));
     const rebateVal = Math.max(0, toSafeNum(fRebate, 0));
@@ -5040,7 +5222,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
   const handleDelete = (id) => { if (!confirm('确定删除该活动？')) return; setActivities(prev => prev.filter(a => a.id !== id)); if (selectedId === id) setSelectedId(null); };
 
   const selectedActivity = activities.find(a => a.id === selectedId);
-  const rawResult = selectedActivity ? calculateForActivity(selectedActivity) : null;
+  const rawResult = selectedActivity ? activityResultMap[selectedActivity.id] : null;
   const hasError = rawResult && rawResult.error;
   const result = hasError ? null : rawResult;
   const diagnosis = rawResult?.diagnosis || null;
@@ -5076,21 +5258,22 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">活动总数</div><div className="text-xl font-bold text-slate-800">{activityStats.total}</div></div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">已完成观察</div><div className="text-xl font-bold text-green-600">{activityStats.completed}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">观察中</div><div className="text-xl font-bold text-amber-600">{activityStats.observing}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Incremental ROI</div><div className="text-xl font-bold text-indigo-600">{fmtROI(activityStats.avgROI)}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">总有效增量纯销</div><div className="text-xl font-bold text-slate-800">¥{fmtMoney(activityStats.totalEffective)}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">总品牌投入</div><div className="text-xl font-bold text-slate-800">¥{fmtMoney(activityStats.totalInvestment)}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">观察中/暂估</div><div className="text-xl font-bold text-amber-600">{activityStats.observing}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">Baseline不足</div><div className="text-xl font-bold text-amber-700">{activityStats.insufficient}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">无效</div><div className="text-xl font-bold text-slate-400">{activityStats.invalid}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">全部已录入投入</div><div className="text-xl font-bold text-slate-800">¥{fmtMoney(activityStats.totalInvestmentAll)}</div><div className="text-[10px] text-slate-400 mt-0.5">其中 ROI 可计算 {activityStats.roiIncluded > 0 ? '¥' + fmtMoney(activityStats.totalInvestmentRoi) : '—'}</div></div>
         </div>
       )}
 
-      {/* v3.2（规则二十/二十一）：增量价值聚合统计，全部 null-safe */}
+      {/* 增量价值聚合统计（规则五）：正式汇总只纳入完整性已确认的活动；每个聚合显示纳入/排除活动数 */}
       {activityStats.total > 0 && (() => {
         const tierPI = econTier('incrementalProfitInvestment', activityStats.incrementalProfitInvestment);
         return (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量毛利合计 <span className="text-slate-300">vs Baseline</span></div><div className="text-xl font-bold text-slate-800">{fmtSignedMoney(activityStats.totalIncrementalBrandGrossProfit)}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalBrandNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalBrandNetProfit)}</div></div>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">托盘商增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${activityStats.totalIncrementalDistributorNetProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>{fmtSignedMoney(activityStats.totalIncrementalDistributorNetProfit)}</div></div>
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Incremental ROI</div><div className="text-xl font-bold text-indigo-600">{fmtROI(activityStats.avgROI)}</div><div className="text-[10px] text-slate-400 mt-0.5">纳入 {activityStats.roiIncluded} · 排除 {activityStats.roiExcluded}（暂估活动不进入正式汇总）</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4" title="活动口径合计，可能重复归因；存在归因重叠时不代表去重总增量"><div className="text-xs text-slate-500">有效增量纯销合计</div><div className="text-xl font-bold text-slate-800">{activityStats.effectiveIncluded > 0 ? '¥' + fmtMoney(activityStats.totalEffective) : '—'}</div><div className="text-[10px] text-slate-400 mt-0.5">{activityStats.effectiveIncluded > 0 ? '活动口径合计' : '暂无完整性已确认样本'}{activityStats.overlapAny ? ' · ⚠存在归因重叠' : (activityStats.effectiveIncluded > 0 ? ' · 可能重复归因' : '')}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">品牌增量净利合计 <span className="text-slate-300">vs Baseline</span></div><div className={`text-xl font-bold ${(activityStats.totalIncrementalBrandNetProfit ?? 0) < 0 ? 'text-red-600' : 'text-slate-800'}`}>{activityStats.totalIncrementalBrandNetProfit === null ? '—' : fmtSignedMoney(activityStats.totalIncrementalBrandNetProfit)}</div><div className="text-[10px] text-slate-400 mt-0.5">毛利 {activityStats.totalIncrementalBrandGrossProfit === null ? '—' : fmtSignedMoney(activityStats.totalIncrementalBrandGrossProfit)} · 纳入 {activityStats.profitIncluded} · 排除 {activityStats.profitExcluded}</div></div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4" title="扣运营、不含返利（incrementalNetProfit 口径）"><div className="text-xs text-slate-500">托盘商增量净利合计·不含返利</div><div className={`text-xl font-bold ${(activityStats.totalIncrementalDistributorNetProfit ?? 0) < 0 ? 'text-red-600' : 'text-slate-800'}`}>{activityStats.totalIncrementalDistributorNetProfit === null ? '—' : fmtSignedMoney(activityStats.totalIncrementalDistributorNetProfit)}</div><div className="text-[10px] text-slate-400 mt-0.5">扣运营·不含返利口径</div></div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">增量净利润投入比（总/总）</div><div className="text-xl font-bold text-indigo-600">{activityStats.incrementalProfitInvestment === null ? '—' : safePct(activityStats.incrementalProfitInvestment, 1)}</div>{tierPI && <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{background: tierPI.color + '1a', color: tierPI.color}}>{tierPI.label}</span>}</div>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4"><div className="text-xs text-slate-500">平均 Persistence</div><div className="text-xl font-bold text-slate-800">{safePct(activityStats.avgPersistence, 1)}</div></div>
         </div>
@@ -5163,7 +5346,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
 
       {platformSummary.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100"><h3 className="font-semibold">平台 ROI 分析</h3><p className="text-xs text-slate-400 mt-0.5">按活动平台聚合已录入活动</p></div>
+          <div className="px-4 py-3 border-b border-slate-100"><h3 className="font-semibold">平台 ROI 分析</h3><p className="text-xs text-slate-400 mt-0.5">按活动平台聚合已录入活动；窗口/有效增量为活动口径合计，可能重复归因{platformSummary.some(p => p.excluded > 0) ? '；含完整性未确认活动的平台，其增量不计入合计（已确认投入仍全额计入平台投入）' : ''}{platformSummary.some(p => p.hasOverlap) ? '；⚠ 存在归因重叠，已暂停输出整体 ROI 等级' : ''}</p></div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-100"><tr className="text-slate-500">
@@ -5181,8 +5364,8 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                     <td className="px-3 py-2 font-medium text-slate-700">{p.channelLabel}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{p.count}</td>
                     <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(p.totalInvestment)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(p.totalWindowIncremental)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium text-green-600">¥{fmtMoney(p.totalEffectiveIncremental)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.included > 0 ? '¥' + fmtMoney(p.totalWindowIncremental) : '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium text-green-600">{p.included > 0 ? '¥' + fmtMoney(p.totalEffectiveIncremental) : '—'}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-bold">{fmtROI(p.roi)}</td>
                     <td className="px-3 py-2 text-center"><span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{background: (gradeColors[p.grade] || '#94a3b8') + '20', color: gradeColors[p.grade] || '#94a3b8'}}>{p.grade}</span></td>
                   </tr>
@@ -5200,7 +5383,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
           <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
             <div>
               <h3 className="font-semibold">活动经营质量矩阵</h3>
-              <p className="text-xs text-slate-400 mt-0.5">X = Incremental ROI（1x 投入回本线）· Y = Persistence（0 为界）· ◆ 菱形 = 品牌净利为负的风险活动 · 半透明 = 观察中</p>
+              <p className="text-xs text-slate-400 mt-0.5">X = Incremental ROI（1x 增量销售效率参考线，非利润回本线；真正回本 = 品牌增量贡献净额 ≥ 0）· Y = Persistence（0 为界）· ◆ 菱形 = 品牌净利为负的风险活动 · 仅展示最终态活动</p>
             </div>
             <div className="flex flex-wrap gap-3 text-xs text-slate-500">
               {Object.entries(QUALITY_META).map(([k, m]) => (
@@ -5295,9 +5478,9 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
       {activities.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {activities.map(act => {
-            const res = calculateForActivity(act);
+            const res = activityResultMap[act.id];
             const roi = res?.return?.incrementalSellOutROI;
-            const roiStr = res?.status === 'baseline_insufficient' ? 'Baseline不足' : (res?.error ? '-' : fmtROI(roi, 1));
+            const roiStr = res?.status === 'baseline_insufficient' ? 'Baseline不足' : (res?.error ? '-' : (res?.evaluation?.provisional ? fmtROI(roi, 1) + '·暂' : fmtROI(roi, 1)));
             const grade = res?.error ? (res?.status === 'baseline_insufficient' ? '待评估' : '?') : (res?.evaluation?.grade || '?');
             const chipBrandLoss = (() => { const _np = toMetricNumber(res?.economics?.brand?.netProfit); return _np !== null && _np < 0; })();
             const skuCount = act.skuMode === 'all' ? skuMaster.length : (act.skuCodes || []).filter(c => skuMaster.some(s => s.code === c)).length;
@@ -5343,7 +5526,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50">
             <h3 className="font-semibold text-slate-700">Activity Window 实际经营结果（Baseline 不足 · 增量指标不可用）</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Incremental ROI = — · Grade = — · 增量利润 = —（Baseline 需 ≥2 个完整周）</p>
+            <p className="text-xs text-slate-400 mt-0.5">Incremental ROI = — · Grade = — · 增量利润 = —（Baseline 需 ≥2 个有效周）</p>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 text-sm">
             <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Activity GMV</div><div className="text-lg font-bold text-slate-800 mt-0.5">{fmtSignedMoney(E.terminal.gmv)}</div></div>
@@ -5380,8 +5563,11 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
               {!result.postActivity.observationComplete && (
                 <div className="text-xs mt-1 text-amber-600">活动后观察 {result.postActivity.postPeriods}/{result.postActivity.postPeriodsRequired} 周 · 暂不定级</div>
               )}
-              {(result.economicRisk || []).includes('brand_loss') && (
-                <div className="text-xs mt-1 font-bold text-red-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5"/>品牌净利为负 · 风险活动（效率评级与经济风险为两个独立维度，评级不被覆盖）</div>
+              {(result.economicRisk || []).includes('brand_total_loss') && (
+                <div className="text-xs mt-1 font-bold text-red-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5"/>品牌整体贡献为负 · 风险活动（效率评级与经济风险为两个独立维度，评级不被覆盖）</div>
+              )}
+              {(result.economicRisk || []).includes('brand_incremental_loss') && !(result.economicRisk || []).includes('brand_total_loss') && (
+                <div className="text-xs mt-1 font-bold text-red-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5"/>品牌增量贡献为负：相对 Baseline，新增经营收益未覆盖投入</div>
               )}
             </div>
             <div className="text-right">
@@ -5390,11 +5576,27 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
             </div>
           </div>
 
+          {result.reliability === 'assumed' && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 text-xs text-purple-800">
+              按稀疏数据假设测算，完整性未确认：部分周期缺少 SKU 级显式记录或覆盖元数据，本结果为参考测算，不进入最终评级与正式汇总；重新上传对应周数据（单品/渠道周数据）写入覆盖元数据后可转最终评级。
+            </div>
+          )}
+          {!result.activityWindow.fullyObserved && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+              活动窗口未完整观察（已观察 {result.activityWindow.observedWeeks}/{result.activityWindow.windowPeriods} 周）：以下为已知部分合计与 Baseline 同口径暂估对比，不是完整窗口最终结果。
+            </div>
+          )}
+          {result.postActivity.missingWeeks > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+              观察期时间轴内缺 {result.postActivity.missingWeeks} 周数据：缺失周不按 0 计入，观察期不计为已完成。
+            </div>
+          )}
+
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Kpi icon={<BarChart3 className="w-5 h-5"/>} tint="#0d9488" label="窗口增量纯销" value={'¥' + fmtMoney(result.activityWindow.windowIncrementalSellOut)} sub={result.activityWindow.windowPeriods + '周窗口'}/>
             <Kpi icon={<Gauge className="w-5 h-5"/>} tint="#ea580c" label="有效增量纯销" value={'¥' + fmtMoney(result.effectiveIncremental.effectiveIncrementalSellOut)} sub={'因子 ' + safePct(result.effectiveIncremental.effectiveFactor, 0)}/>
             <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#6366f1" label="Incremental ROI" value={fmtROI(result.return.incrementalSellOutROI)}/>
-            <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#dc2626" label="增量成本率" value={result.return.incrementalCostRatePercent + '%'}/>
+            <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#dc2626" label="增量成本率" value={result.return.incrementalCostRatePercent === null ? '不可计算（无正增量）' : result.return.incrementalCostRatePercent + '%'}/>
           </div>
 
           {/* ================= 效率 vs 经济结果 总结（规则四十） ================= */}
@@ -5446,9 +5648,9 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
               <div className="px-4 pt-3">
                 <div className="text-xs font-semibold text-slate-500 mb-2" title="增量指标 = Activity Window 实际结果 - Baseline 理论结果。">② 增量经营价值 <span className="font-normal text-slate-400">vs Baseline</span></div>
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-                  {cell('Incremental GMV', E.terminal.incrementalSellout === null ? '—' : money(E.terminal.incrementalSellout), 'vs Baseline')}
+                  {cell('Incremental GMV（正增量）', E.terminal.incrementalSellout === null ? '—' : money(E.terminal.incrementalSellout), 'vs Baseline')}
                   {cell('Incremental Distributor GP', E.distributor.incrementalGrossProfit === null ? '—' : money(E.distributor.incrementalGrossProfit), 'vs Baseline')}
-                  {cell('Incremental Distributor NP', E.distributor.incrementalEconomicNetProfit === null ? '—' : money(E.distributor.incrementalEconomicNetProfit), 'vs Baseline')}
+                  {cell('Incremental Distributor NP（含返利）', E.distributor.incrementalEconomicNetProfit === null ? '—' : money(E.distributor.incrementalEconomicNetProfit), 'vs Baseline')}
                   {cell('Incremental Brand GP', E.brand.incrementalGrossProfit === null ? '—' : money(E.brand.incrementalGrossProfit), 'vs Baseline')}
                   {cell('Incremental Brand NP', E.brand.incrementalNetProfit === null ? '—' : money(E.brand.incrementalNetProfit), 'vs Baseline')}
                 </div>
@@ -5468,8 +5670,8 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental ROI</div><div className="text-base font-bold text-indigo-600 mt-0.5">{fmtROI(result.return.incrementalSellOutROI)}</div></div>
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Incremental Net Profit / Investment</div><div className="text-base font-bold text-slate-800 mt-0.5">{pi === null ? '—' : safePct(pi, 1)}</div><div className="mt-1">{tierChip(tierPI)}</div></div>
-                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Brand Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierB)}</div></div>
-                  <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Distributor Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierD)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3" title="品牌增量贡献净额 / 活动供货测算收入"><div className="text-xs text-slate-500">Brand Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierB)}</div></div>
+                  <div className="bg-slate-50 rounded-lg p-3" title="托盘商增量经济净额（含返利） / 活动终端GMV"><div className="text-xs text-slate-500">Distributor Incremental Net Margin</div><div className="text-base font-bold text-slate-800 mt-0.5">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</div><div className="mt-1">{tierChip(tierD)}</div></div>
                   <div className="bg-slate-50 rounded-lg p-3"><div className="text-xs text-slate-500">Persistence</div><div className={`text-base font-bold mt-0.5 ${result.postActivity.persistenceRate >= 0 ? 'text-green-600' : 'text-red-500'}`}>{safePct(result.postActivity.persistenceRate, 1)}</div></div>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1.5">Incremental ROI 衡量新增终端纯销效率；Incremental Net Profit / Investment 衡量活动创造的真实增量净利润效率，两者不能互相替代。以上为兆丰罗盘内部经营阈值，不代表中国跨境保健品行业统一标准。</p>
@@ -5484,7 +5686,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   <span className="text-xs text-slate-500 ml-2">Economic Risk</span>
                   {(result.economicRisk || []).map(r => (<span key={r} className="text-xs px-2 py-0.5 rounded-full font-medium" style={{background: (RISK_META[r]?.color || '#94a3b8') + '1a', color: RISK_META[r]?.color || '#94a3b8'}}>{RISK_META[r]?.label || r}</span>))}
                 </div>
-                {(result.economicRisk || []).includes('brand_loss') && result.evaluation.grade !== '—' && (
+                {(result.economicRisk || []).includes('brand_total_loss') && result.evaluation.grade !== '—' && (
                   <p className="text-[10px] text-slate-400 mt-1.5">ROI Grade 与 Economic Risk 为两个独立维度：销售效率高不代表利润健康，两者同时成立属合法结果。</p>
                 )}
               </div>
@@ -5504,7 +5706,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
 
           {/* ================= 自动经营结论（规则二十八） ================= */}
           {result.conclusion && (
-            <div className={`rounded-xl border p-4 text-sm ${(result.economicRisk || []).includes('brand_loss') ? 'bg-red-50 border-red-200 text-red-700' : 'bg-indigo-50 border-indigo-200 text-indigo-800'}`}>
+            <div className={`rounded-xl border p-4 text-sm ${(result.economicRisk || []).includes('brand_total_loss') ? 'bg-red-50 border-red-200 text-red-700' : (result.reliability === 'assumed' ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800')}`}>
               <span className="font-bold">经营结论：</span>{result.conclusion}
             </div>
           )}
@@ -5526,7 +5728,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-slate-500">Activity GMV</span><span className="font-medium">{fmtSignedMoney(E.terminal.gmv)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Baseline GMV（窗口折算）</span><span className="font-medium">{E.terminal.baselineWindowGmv === null ? '—' : fmtSignedMoney(E.terminal.baselineWindowGmv)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Incremental Sell-out</span><span className="font-medium text-green-600">{E.terminal.incrementalSellout === null ? '—' : fmtSignedMoney(E.terminal.incrementalSellout)}</span></div>
+                  <div className="flex justify-between" title="有符号净增量 = 窗口实际纯销 − Baseline 同口径折算；销量下降不隐藏在「增量为0」背后"><span className="text-slate-500">净增量GMV（有符号）</span><span className={`font-medium ${(E.terminal.netIncrementalSellout ?? 0) < 0 ? 'text-red-600' : 'text-green-600'}`}>{E.terminal.netIncrementalSellout === null ? '—' : fmtSignedMoney(E.terminal.netIncrementalSellout)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Incremental ROI</span><span className="font-medium">{fmtROI(result.return.incrementalSellOutROI)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Persistence</span><span className="font-medium">{safePct(result.postActivity.persistenceRate, 1)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">实际成交均价</span><span className="font-medium">{E.terminal.avgSellPrice === null ? '—' : '¥' + fmtMoney(E.terminal.avgSellPrice)}</span></div>
@@ -5542,7 +5744,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   <div className="flex justify-between"><span className="text-slate-500">净利率</span><span className="font-medium">{safePct(E.distributor.netMargin, 1)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">经济净利（含返利）</span><span className={`font-medium ${E.distributor.economicNetProfit < 0 ? 'text-red-600' : 'text-teal-600'}`}>{fmtSignedMoney(E.distributor.economicNetProfit)}</span></div>
                   <div className="flex justify-between border-t border-slate-100 pt-1"><span className="text-slate-500">增量毛利</span><span className="font-medium">{E.distributor.incrementalGrossProfit === null ? '—' : fmtSignedMoney(E.distributor.incrementalGrossProfit)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">增量净利（经济口径）</span><span className="font-medium">{E.distributor.incrementalEconomicNetProfit === null ? '—' : fmtSignedMoney(E.distributor.incrementalEconomicNetProfit)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">增量净利（含返利·经济口径）</span><span className="font-medium">{E.distributor.incrementalEconomicNetProfit === null ? '—' : fmtSignedMoney(E.distributor.incrementalEconomicNetProfit)}</span></div>
                 </div>
               </div>
               <div className="p-4">
@@ -5555,16 +5757,16 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   <div className="flex justify-between"><span className="text-slate-500">净利率</span><span className="font-medium">{safePct(E.brand.netMargin, 1)}</span></div>
                   <div className="flex justify-between border-t border-slate-100 pt-1"><span className="text-slate-500">增量毛利</span><span className="font-medium">{E.brand.incrementalGrossProfit === null ? '—' : fmtSignedMoney(E.brand.incrementalGrossProfit)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">增量净利</span><span className={`font-medium ${(E.brand.incrementalNetProfit ?? 0) < 0 ? 'text-red-600' : ''}`}>{E.brand.incrementalNetProfit === null ? '—' : fmtSignedMoney(E.brand.incrementalNetProfit)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">增量净利率</span><span className="font-medium">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</span></div>
+                  <div className="flex justify-between" title="品牌增量贡献净额 / 活动供货测算收入"><span className="text-slate-500">增量净利率</span><span className="font-medium">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</span></div>
                 </div>
               </div>
               <div className="p-4">
                 <div className="text-xs font-semibold text-slate-500 mb-2">Incremental Economics · 增量利润{incNA && '（Baseline不足）'}</div>
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-slate-500">品牌增量净利</span><span className="font-bold">{E.brand.incrementalNetProfit === null ? '—' : fmtSignedMoney(E.brand.incrementalNetProfit)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">品牌增量净利率</span><span className="font-medium">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">托盘商增量净利</span><span className="font-bold">{E.distributor.incrementalEconomicNetProfit === null ? '—' : fmtSignedMoney(E.distributor.incrementalEconomicNetProfit)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">托盘商增量净利率</span><span className="font-medium">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</span></div>
+                  <div className="flex justify-between" title="品牌增量贡献净额 / 活动供货测算收入"><span className="text-slate-500">品牌增量净利率</span><span className="font-medium">{E.brand.incrementalNetProfitRate === null ? '—' : safePct(E.brand.incrementalNetProfitRate, 1)}</span></div>
+                  <div className="flex justify-between" title="托盘商增量经济净额（含返利）"><span className="text-slate-500">托盘商增量净利（含返利）</span><span className="font-bold">{E.distributor.incrementalEconomicNetProfit === null ? '—' : fmtSignedMoney(E.distributor.incrementalEconomicNetProfit)}</span></div>
+                  <div className="flex justify-between" title="托盘商增量经济净额（含返利） / 活动终端GMV"><span className="text-slate-500">托盘商增量净利率</span><span className="font-medium">{E.distributor.incrementalNetProfitRate === null ? '—' : safePct(E.distributor.incrementalNetProfitRate, 1)}</span></div>
                   <div className="border-t border-slate-100 pt-1 flex justify-between"><span className="text-slate-500">品牌投入</span><span className="font-medium">{fmtSignedMoney(E.investment.brandInvestment)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">消费者端补贴</span><span className="font-medium">{fmtSignedMoney(E.investment.consumerPriceSubsidy)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">托盘商返利</span><span className="font-medium">{fmtSignedMoney(E.investment.distributorRebate)}</span></div>
@@ -5587,7 +5789,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   <tr className="border-b border-slate-50"><td className="px-3 py-2 text-slate-500">托盘商净利</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.distributor.netProfit)}</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.post.distNet)}</td></tr>
                   <tr className="border-b border-slate-50"><td className="px-3 py-2 text-slate-500">品牌毛利</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.brand.grossProfit)}</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.post.brandGross)}</td></tr>
                   <tr className="border-b border-slate-50"><td className="px-3 py-2 text-slate-500">品牌净利</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.brand.netProfit)}</td><td className="px-3 py-2 text-right tabular-nums">{fmtSignedMoney(E.post.brandNet)}</td></tr>
-                  <tr className="border-b border-slate-50"><td className="px-3 py-2 text-slate-500">Incremental GMV</td><td className="px-3 py-2 text-right tabular-nums text-green-600">{E.terminal.incrementalSellout === null ? '—' : fmtSignedMoney(E.terminal.incrementalSellout)}</td><td className="px-3 py-2 text-right tabular-nums text-green-600">{E.post.incrementalGmv === null ? '—' : fmtSignedMoney(E.post.incrementalGmv)}</td></tr>
+                  <tr className="border-b border-slate-50"><td className="px-3 py-2 text-slate-500" title="有符号净增量；正增量/有效增量见「有效增量与 ROI」卡">净增量GMV（有符号）</td><td className={`px-3 py-2 text-right tabular-nums ${(E.terminal.netIncrementalSellout ?? 0) < 0 ? 'text-red-600' : 'text-green-600'}`}>{E.terminal.netIncrementalSellout === null ? '—' : fmtSignedMoney(E.terminal.netIncrementalSellout)}</td><td className="px-3 py-2 text-right tabular-nums text-green-600">{E.post.incrementalGmv === null ? '—' : fmtSignedMoney(E.post.incrementalGmv)}</td></tr>
                   <tr><td className="px-3 py-2 text-slate-500">Persistence</td><td className="px-3 py-2 text-right tabular-nums">—</td><td className="px-3 py-2 text-right tabular-nums">{safePct(result.postActivity.persistenceRate, 1)}</td></tr>
                 </tbody>
               </table>
@@ -5612,7 +5814,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                 <div className="flex justify-between"><span className="text-slate-500">窗口 Baseline 纯销</span><span className="font-medium">¥{fmtMoney(result.activityWindow.windowBaselineSellOut)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">窗口增量纯销</span><span className="font-medium text-green-600">¥{fmtMoney(result.activityWindow.windowIncrementalSellOut)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">窗口周均增量</span><span className="font-medium">¥{fmtMoney(result.activityWindow.windowWeeklyIncremental)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">窗口 Lift</span><span className="font-medium">{result.activityWindow.windowLift}x</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">窗口 Lift{result.activityWindow.windowLift === null ? '（零基线/新渠道参考）' : ''}</span><span className="font-medium">{result.activityWindow.windowLift === null ? '—' : result.activityWindow.windowLift + 'x'}</span></div>
               </div>
             </Card>
 
@@ -5641,7 +5843,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                 )}
                 <div className="flex justify-between border-t border-slate-100 pt-1"><span className="text-slate-700 font-medium">品牌真实投入合计</span><span className="font-bold text-orange-600">¥{fmtMoney(result.investment.totalBrandInvestment)}</span></div>
                 <div className="flex justify-between border-t border-slate-100 pt-2 mt-1"><span className="text-slate-700 font-medium">Incremental ROI</span><span className="font-bold text-indigo-600 text-lg">{fmtROI(result.return.incrementalSellOutROI)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-700 font-medium">增量成本率</span><span className="font-bold text-orange-600">{result.return.incrementalCostRatePercent}%</span></div>
+                <div className="flex justify-between"><span className="text-slate-700 font-medium">增量成本率</span><span className="font-bold text-orange-600">{result.return.incrementalCostRatePercent === null ? '不可计算（无正增量）' : result.return.incrementalCostRatePercent + '%'}</span></div>
               </div>
             </Card>
           </div>
@@ -5658,45 +5860,91 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                     <div className="text-slate-500">起始周 Index：<span className="text-slate-700">{diagnosis.startIdx}</span></div>
                     <div className="text-slate-500">活动平台：<span className="text-slate-700">{diagnosis.activityChannel}</span></div>
                     <div className="text-slate-500">有效 SKU：<span className="text-slate-700">{diagnosis.validSkuCount}</span></div>
-                    <div className="text-slate-500">Baseline 可用周数：<span className="text-slate-700">{diagnosis.baselineAvailable}/{diagnosis.baselineRequired}</span></div>
-                    <div className="text-slate-500">活动窗口可用周数：<span className="text-slate-700">{diagnosis.windowAvailable}/{diagnosis.windowRequired}</span></div>
-                    <div className="text-slate-500">活动后可用周数：<span className="text-slate-700">{diagnosis.postAvailable}/{diagnosis.postRequired}</span></div>
+                    <div className="text-slate-500">Baseline 实际使用周数：<span className="text-slate-700">{diagnosis.baselineAvailable}（配置 {diagnosis.baselineRequired}）</span></div>
+                    <div className="text-slate-500">活动窗口已观察周数：<span className="text-slate-700">{diagnosis.windowAvailable}/{diagnosis.windowRequired}{diagnosis.windowCalendarMissing > 0 ? `（${diagnosis.windowCalendarMissing} 周未到）` : ''}</span></div>
+                    <div className="text-slate-500">活动后已观察周数：<span className="text-slate-700">{diagnosis.postAvailable}/{diagnosis.postRequired}{diagnosis.postCalendarMissing > 0 ? `（${diagnosis.postCalendarMissing} 周未到观察期）` : ''}</span></div>
+                    <div className="text-slate-500">数据可靠性：<span className={diagnosis.reliability === 'confirmed' ? 'text-green-700 font-medium' : 'text-purple-700 font-medium'}>{diagnosis.reliability === 'confirmed' ? '完整性已确认' : '按稀疏数据假设测算，完整性未确认'}</span></div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-slate-600">活动窗口数据：</p>
-                    <div className="flex flex-wrap gap-1">
-                      {diagnosis.windowWeeks.map(w => (
-                        <span key={w.idx} className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-100">✓ {w.label} ¥{fmtMoney(w.gmv)}</span>
-                      ))}
-                      {diagnosis.windowWeeks.length === 0 && <span className="text-xs text-amber-600">暂无数据</span>}
+                  {(() => {
+                    const STATUS_META = {
+                      complete: { label: '完整', cls: 'bg-green-50 text-green-700 border-green-100' },
+                      zero: { label: '明确零销量', cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+                      partial: { label: '部分缺失', cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+                      unknown: { label: '完整性未知', cls: 'bg-purple-50 text-purple-700 border-purple-100' }
+                    };
+                    const weekChip = (w) => {
+                      const m = STATUS_META[w.status] || STATUS_META.unknown;
+                      return (
+                        <span key={w.stage + w.idx} className={`text-xs px-2 py-0.5 rounded-full border ${m.cls}`} title={`GMV ¥${fmtMoney(w.gmv)}`}>
+                          {w.periodId} · {m.label}
+                        </span>
+                      );
+                    };
+                    const stageRow = (title, weeks, extra) => (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-slate-600">{title}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(weeks || []).map(w => weekChip({ ...w, stage: title }))}
+                          {extra || null}
+                          {(!weeks || weeks.length === 0) && !extra && <span className="text-xs text-amber-600">暂无数据</span>}
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <>
+                        {stageRow('Baseline 数据（实际使用 ' + (diagnosis.baselineWeeks || []).length + ' 周）：', diagnosis.baselineWeeks,
+                          (diagnosis.baselineSkipped || []).length > 0 && <span className="text-xs text-slate-400 self-center">跳过 {(diagnosis.baselineSkipped || []).map(w => w.periodId).join('、')}（整周无记录）</span>)}
+                        {stageRow('活动窗口数据：', (diagnosis.windowWeeks || []).filter(w => w.usable),
+                          <>
+                            {(diagnosis.windowWeeks || []).filter(w => !w.usable).map(w => <span key={'wm' + w.idx} className="text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-100">{w.periodId} · 完整性未知</span>)}
+                            {diagnosis.windowCalendarMissing > 0 && <span className="text-xs px-2 py-0.5 rounded-full border bg-slate-50 text-slate-400 border-slate-200">{diagnosis.windowCalendarMissing} 周未到观察期</span>}
+                          </>)}
+                        {stageRow('活动后数据：', (diagnosis.postWeeks || []).filter(w => w.usable),
+                          <>
+                            {(diagnosis.postWeeks || []).filter(w => !w.usable).map(w => <span key={'pm' + w.idx} className="text-xs px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-100">{w.periodId} · 完整性未知</span>)}
+                            {diagnosis.postCalendarMissing > 0 && <span className="text-xs px-2 py-0.5 rounded-full border bg-slate-50 text-slate-400 border-slate-200">{diagnosis.postCalendarMissing} 周未到观察期</span>}
+                          </>)}
+                      </>
+                    );
+                  })()}
+                  {(diagnosis.overlapWarnings || []).length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-red-600">归因重叠提示（先提示，不自动分摊）：</p>
+                      {(diagnosis.overlapWarnings || []).map((t, i) => <p key={i} className="text-xs text-red-600">{t}</p>)}
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-slate-600">活动后数据：</p>
-                    <div className="flex flex-wrap gap-1">
-                      {diagnosis.postWeeks.map(w => (
-                        <span key={w.idx} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">✓ {w.label} ¥{fmtMoney(w.gmv)}</span>
-                      ))}
-                      {diagnosis.postWeeks.length === 0 && <span className="text-xs text-amber-600">暂无数据</span>}
+                  )}
+                  {(diagnosis.pollutionWarnings || []).length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-amber-600">Baseline/观察期污染提示：</p>
+                      {(diagnosis.pollutionWarnings || []).map((t, i) => <p key={i} className="text-xs text-amber-600">{t}</p>)}
                     </div>
-                  </div>
+                  )}
+                  {diagnosis.skuScopeNote && <p className="text-xs text-slate-400">{diagnosis.skuScopeNote}</p>}
                   {diagnosis.missingPeriods && diagnosis.missingPeriods.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-slate-600">SKU×周 缺失诊断（稀疏上传语义：无记录 = 当周未动销 = 真实 0，仅提示不扣减）：</p>
+                      <p className="text-xs font-medium text-slate-600">SKU×周 缺失诊断（未盖章的缺失不计为 0，仅提示）：</p>
                       <div className="flex flex-wrap gap-1">
                         {diagnosis.missingPeriods.slice(0, 6).map((m, i) => (
                           <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">
-                            {m.stage} · {m.period}：{m.missingSkus.slice(0, 3).map(code => skuMaster.find(s => s.code === code)?.name || code).join('、')}{m.missingSkus.length > 3 ? ` 等 ${m.missingSkus.length} 个 SKU` : ' SKU'} 无记录
+                            {m.stage} · {m.period}：{m.wholeWeek ? '整周无记录（完整性未知）' : (m.missingSkus.slice(0, 3).map(code => skuMaster.find(s => s.code === code)?.name || code).join('、') + (m.missingSkus.length > 3 ? ` 等 ${m.missingSkus.length} 个 SKU` : ' SKU') + ' 无记录')}
                           </span>
                         ))}
-                        {diagnosis.missingPeriods.length > 6 && <span className="text-xs text-slate-400 self-center">… 共 {diagnosis.missingPeriods.length} 个周存在 SKU 无记录</span>}
+                        {diagnosis.missingPeriods.length > 6 && <span className="text-xs text-slate-400 self-center">… 共 {diagnosis.missingPeriods.length} 个周存在缺失</span>}
                       </div>
                     </div>
                   )}
                   {hasError && <p className="text-xs text-red-600">❌ {rawResult.error}</p>}
-                  {!hasError && <p className="text-xs text-green-600">✓ 数据完整，可以计算 ROI</p>}
-                </div>
-              )}
+                  {!hasError && result && (
+                    <p className={`text-xs ${result.finalAllowed ? 'text-green-600' : 'text-amber-600'}`}>
+                      {result.finalAllowed ? '✓ 窗口完整、Baseline 可用、观察期完成、完整性已确认，可以出具最终评级'
+                        : '◔ 暂估/待补数据：' + [
+                            !result.activityWindow.fullyObserved ? '窗口未完整观察' : null,
+                            result.postActivity && !result.postActivity.observationComplete ? '观察期未完成' : null,
+                            result.reliability === 'assumed' ? '完整性未确认' : null
+                          ].filter(Boolean).join('；')}
+                    </p>
+                  )}
+                </div>              )}
             </div>
           )}
         </div>
