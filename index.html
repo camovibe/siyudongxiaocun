@@ -10,7 +10,8 @@
 
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
-<!-- v3.7 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · v3.7：时间轴 id 化、数据质量卡、缓存键隔离、防误操作锁 · 基于 v3.7 完整功能裁剪 -->
+<!-- v3.8 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改/质量忽略操作 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · v3.7：时间轴 id 化、数据质量卡、缓存键隔离、防误操作锁 · v3.8：滚动4周周转率、月均折算、质量忽略项同步展示（只读版不可操作） · 基于 v3.8 完整功能裁剪 -->
+<!-- 历史 v3.7 数据可靠性定向升级（在 v3.6 活动分析定向重构之上）：① 导入原子事务+预览校验+行级错误（行号/列名/原值）+导入历史+一键撤销；② 三模式语义（upsert 按业务主键更新·默认 / replace 覆盖全部历史 / appendNew 仅新增周期），杜绝重复导入静默累加；③ 时间轴 id 化（YYYY-MM-DD 锚定，TIMELINE_BASE_YEAR=2026，跨年回绕），dataCoverage 键迁 periodId，活动保存写 startPeriodId；④ CSV 强化解析（BOM/千分位/非法整数金额拒绝）；⑤ 统一 genSkuMetrics 唯一实现，缺周保留 null 不补 0；⑥ 数据质量卡（库存恒等式差异/连续性断点/SKU vs 渠道 GMV 对账/缺周记录，只提示不自动修正）；⑦ 同步重写——缓存键隔离、数据源优先级 ?gist=>已存 gistId>默认>./data.json、Gist 走 API 取真实 raw_url、syncSeq+AbortController 防竞态、推送前 revision 冲突检查；⑧ 密码改称「防误操作锁（非安全访问控制）」，活动ROI tab 纳入门禁；⑨ JSON 持久化去派生 skuMetrics + schemaVersion=v3.7。数值口径未变，活动 ROI 与 v3.6 完全一致 -->
 <!-- 历史 v3.6 · 活动分析定向重构 + v3.5 分析数值体系（在 v3.4 readOnly 误锁修复 + 同源 data.json 主源之上）。v3.5 要点：toMetricNumber 数值体系、缺失显示「—」、Sparkline 断线、利润监控净利公式修正（单件净利=实际售价×(1−运营率)−供货价）、上传 append 幂等修复、Gist truncated 改走 raw_url 完整下载。v3.6 明细见下行 -->
 <!-- 附 v3.6 规则明细 · 活动分析定向重构：① 新增可持久化 dataCoverage 覆盖元数据（complete/partial/unknown + coveredSkuCodes + missingMeansZero + batchId），上传即盖章、随导出/Gist/本地存储贯通，旧数据一律 unknown 不自动盖章；② 统一 baseline/window/post 周对象（gmv/sales 分别判完整、missingSkus/missingFields/missingPrices），缺失≠0，未盖章缺失行不计为 0；Baseline 返回实际使用与跳过周期；窗口区分日历未满与数据缺失，未满只做已观察周同口径暂估；Post 缺失周不按 0 计入；③ ROI 与利润数据依赖分离——缺成本/供价对应侧利润返回 null+原因，不以 0 或估算价代替，品牌缺成本不连带隐藏托盘商利润；④ 数学边界——safeDiv 零分母返回 null 不再 Infinity，r2 不再把 null/NaN 压成 0；新增有符号净增量GMV；零基线 Lift=null；投入≤0 ROI=null/Grade=—；无正增量 ROI=0 且成本率=null；无 Post persistence=null + 基础因子 0.5 暂估 ROI 标记 provisional；⑤ 风险状态多标签拆分（brand_total_loss/brand_incremental_loss/window_incomplete/window_data_missing/post_data_missing/observing/baseline_insufficient/baseline_zero/price_missing/coverage_unknown/attribution_overlap/investment_not_applicable/no_positive_increment）；activityStats 互斥主状态 completed/observing/insufficient/invalid 之和=total，Baseline不足活动投入仍计入全部已录入投入，利润合计无样本为 null，每个聚合显示纳入/排除活动数；⑥ 最终结论门控（窗口完整+Baseline可用+Post完成+完整性确认+利润可靠），不满足只给暂估/待补数据；持续性文案 null/0/>0/<0 四态分明；⑦ 「1x投入回本线」正名「1x增量销售效率参考线（非利润回本线）」，增量净利率补公式 tooltip（品牌=增量贡献净额/供货测算收入，托盘商=增量经济净额/终端GMV），托盘商 含返利/不含返利 字段与标题统一；⑧ 归因重叠=时间×渠道×SKU 三项同时重叠才成立（ALL 与任意渠道相交），污染 Baseline/Post 先提示不分摊，合计改名活动口径合计可能重复归因；⑨ 诊断按周真实状态展示（完整/明确零销量/部分缺失/完整性未知/未到观察期），整周缺失入 missingPeriods，删除无条件绿勾；⑩ activityResultMap useMemo 单次计算，汇总/统计/矩阵/按钮/详情同源读取；⑪ 稀疏假设测算结果标记 reliability=assumed + 紫色横幅，不进最终评级/质量矩阵/正式汇总 -->
 
@@ -582,12 +583,19 @@ function genSkuMetrics(skus, weeks, periods){
       else if(end>0){ ratioStatus='no_sales_with_stock'; }       // 无动销（有库存），不再用 99
       else { ratioStatus='no_stock_no_sales'; }
       const turnover=(firstBegin===null||end===null||!salesComplete)?null:((firstBegin+end)>0?+(totalSales/((firstBegin+end)/2)).toFixed(2):null);
+      // v3.8：滚动4周周转——近4周售出 ÷ ((窗口第一周 begin + 当周 end)/2)；窗口内任一周销量缺失或端点缺失则当周为 null（断线不补，缺口只影响前后4周）
+      let turnover4w=null;
+      { const ws=Math.max(0,i-3); const wStart=series[ws]||{};
+        const winBegin=has(wStart.begin)?wStart.begin:null;
+        let winSales=0, winComplete=true;
+        for(let j=ws;j<=i;j++){ const sv=(series[j]||{}).sales; if(typeof sv==='number'&&Number.isFinite(sv)) winSales+=sv; else winComplete=false; }
+        if(winBegin!==null && end!==null && winComplete){ const avg=(winBegin+end)/2; turnover4w=avg>0?+(winSales/avg).toFixed(4):null; } }
       const dailyAvg=(sales===null)?null:+(sales/days).toFixed(2);
       const avgPrice=(sales===null||sales===0||gmv===null)?null:+(gmv/sales).toFixed(2);
       return { period:p?p.label:'', periodId:p?p.id:'',
         begin, inbound, end, sales, gmv,
         unitPrice:avgPrice,
-        ratio, ratioNet, ratioStatus, turnover, dailyAvg, avgPrice };
+        ratio, ratioNet, ratioStatus, turnover, turnover4w, dailyAvg, avgPrice };
     });
   }
   return out;
@@ -1028,7 +1036,7 @@ function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
 
     { key: 'ratioNet', label: '库销比（净）', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : (v >= 99 ? '∞' : v.toFixed(2)) },
 
-    { key: 'turnover', label: '滚动周转率', color: '#0d9488', fmt: v => !Number.isFinite(v) ? '—' : (v * 100).toFixed(2) + '%' },
+    { key: 'turnover4w', label: '滚动周转率(近4周)', color: '#0d9488', fmt: v => !Number.isFinite(v) ? '—' : (v * 100).toFixed(2) + '%' },
 
     { key: 'dailyAvg', label: '周均日销', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : v.toFixed(2) },
 
@@ -1184,6 +1192,7 @@ function Dashboard(){
   // v3.7（规则一/四）：导入撤销快照（会话级）+ 导入历史（持久化）+ 保存失败提示 + hydration 闸门
   const [importUndo, setImportUndo] = useState(null);
   const [importHistory, setImportHistory] = useState([]);
+  const [qualityIgnores, setQualityIgnores] = useState([]); // v3.8：数据质量卡忽略项（kind|* 整类 / kind|明细文本 单项），随数据包持久化同步
   const [saveError, setSaveError] = useState(false);
   const hydratedRef = useRef(false);
 
@@ -1212,7 +1221,7 @@ function Dashboard(){
 
   const exportData = () => {
 
-    const data = {skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, importHistory, schemaVersion:SCHEMA_VERSION, datasetId:DATASET_ID, version:'v3.7', exportedAt:Date.now()};
+    const data = {skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, importHistory, qualityIgnores, schemaVersion:SCHEMA_VERSION, datasetId:DATASET_ID, version:'v3.8', exportedAt:Date.now()};
 
     const json = JSON.stringify(data, null, 2);
 
@@ -1377,6 +1386,8 @@ function Dashboard(){
     setDataCoverage({ skuWeeks: migCov(dc.skuWeeks), channelSkuWeekly: Object.fromEntries(Object.entries(dc.channelSkuWeekly || {}).map(([ch, m]) => [ch, migCov(m)])) });
 
     setImportHistory(Array.isArray(data.importHistory) ? data.importHistory : []);
+
+    setQualityIgnores(Array.isArray(data.qualityIgnores) ? data.qualityIgnores : []);
 
     const _opRateImport = toMetricNumber(data.opRate);
 
@@ -1584,15 +1595,15 @@ useEffect(() => {
     if (!hydratedRef.current) return; // v3.7（规则八）：首次 hydration 完成后才允许自动保存
 
     // demo 来源的编辑也保存为「本地草稿」（source 标记区分）；不再存派生 skuMetrics（减体积，加载时重算）
-    const data = { skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, importHistory,
+    const data = { skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, importHistory, qualityIgnores,
 
-      schemaVersion: SCHEMA_VERSION, datasetId: DATASET_ID, version: 'v3.7', source: hasRealData ? 'real' : 'demo-draft', modifiedAt: Date.now(), exportedAt: Date.now() };
+      schemaVersion: SCHEMA_VERSION, datasetId: DATASET_ID, version: 'v3.8', source: hasRealData ? 'real' : 'demo-draft', modifiedAt: Date.now(), exportedAt: Date.now() };
 
     const okSave = safeStorage.setItem('zhaofeng_data__local', JSON.stringify(data));
 
     setSaveError(!okSave); // 保存失败（如超配额）必须可见
 
-  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities, opRate, dataCoverage, importHistory, hasRealData]);
+  }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities, opRate, dataCoverage, importHistory, qualityIgnores, hasRealData]);
 
 
 
@@ -1875,7 +1886,7 @@ useEffect(() => {
 
 
 
-        <DataQualityCard skuMaster={skuMaster} skuWeeks={skuWeeks} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} cost={cost} supply={supply} ctrl={ctrl} dataCoverage={dataCoverage} />
+        <DataQualityCard skuMaster={skuMaster} skuWeeks={skuWeeks} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} cost={cost} supply={supply} ctrl={ctrl} dataCoverage={dataCoverage} qualityIgnores={qualityIgnores} setQualityIgnores={setQualityIgnores} isReadOnly={isReadOnly} />
 
         <div className="flex flex-wrap gap-2">
 
@@ -1976,7 +1987,9 @@ useEffect(() => {
 
               <Kpi icon={<Activity className="w-5 h-5"/>} tint="#0d9488" label="累计数量周转（期初期末近似）"
 
-                value={cur.turnover==null?'—':(cur.turnover*100).toFixed(2)+'%'} chg={delta('turnover')}/>
+                value={cur.turnover==null?'—':(cur.turnover*100).toFixed(2)+'%'} chg={delta('turnover')}
+
+                sub={cur.turnover==null?undefined:`≈ 月均 ${(cur.turnover/(safeSeries.length*7/30)).toFixed(1)} 次（累计 ÷ ${(safeSeries.length*7/30).toFixed(1)} 个月）· 期初期末两点近似平均库存，含补货周会偏乐观`}/>
 
               <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#6366f1" label="周均日销"
 
@@ -2024,7 +2037,7 @@ useEffect(() => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-              <Card title="滚动周转率趋势" subtitle="售出件数 ÷ ((期初库存+期末库存)/2)">
+              <Card title="滚动周转率趋势（近4周）" subtitle="近4周售出件数 ÷ ((窗口期初+期末)/2) · 缺数据的周断线不补0 · 库存只有周粒度，平均库存为期初期末两点近似">
 
                 <div className="h-56 w-full">
 
@@ -2046,7 +2059,7 @@ useEffect(() => {
 
                       <Tooltip formatter={v=>(v*100).toFixed(2)+'%'}/>
 
-                      <Area dataKey="turnover" stroke="#0d9488" strokeWidth={2} fill="url(#gT)"/>
+                      <Area name="近4周周转率" dataKey="turnover4w" stroke="#0d9488" strokeWidth={2} fill="url(#gT)" connectNulls={false}/>
 
                     </AreaChart>
 
@@ -2144,7 +2157,7 @@ useEffect(() => {
 
 
 
-        {tab==='activity' && <DataQualityCard skuMaster={skuMaster} skuWeeks={skuWeeks} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} cost={cost} supply={supply} ctrl={ctrl} dataCoverage={dataCoverage} />}
+        {tab==='activity' && <DataQualityCard skuMaster={skuMaster} skuWeeks={skuWeeks} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} cost={cost} supply={supply} ctrl={ctrl} dataCoverage={dataCoverage} qualityIgnores={qualityIgnores} setQualityIgnores={setQualityIgnores} isReadOnly={isReadOnly} />}
         {tab==='activity' && <ActivityView skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} channelSkuWeekly={channelSkuWeekly} channelWeekly={channelWeekly} activities={activities} setActivities={setActivities} cost={cost} supply={supply} opRate={opRate} isReadOnly={isReadOnly} dataCoverage={dataCoverage} />}
 
 
@@ -6502,30 +6515,79 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
 }
 
 /* ---------------- v3.7（规则七）：数据质量卡（点击摘要展开明细；只报告不改数据） ---------------- */
-function DataQualityCard({ skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, dataCoverage }){
+function DataQualityCard({ skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, dataCoverage, qualityIgnores, setQualityIgnores, isReadOnly }){
   const [open, setOpen] = useState(null);
+  const [showIgnored, setShowIgnored] = useState(false);
+  const ignores = Array.isArray(qualityIgnores) ? qualityIgnores : [];
+  const ignoredSet = useMemo(() => new Set(ignores), [ignores]);
   const report = useMemo(() => computeQualityReport({ skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, dataCoverage, periods: PERIODS }),
     [skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, dataCoverage]);
-  const errs = report.issues.filter(i => i.sev === 'high').reduce((t, i) => t + i.count, 0);
-  const warns = report.issues.filter(i => i.sev !== 'high' && i.sev !== 'info').reduce((t, i) => t + i.count, 0);
+  const kindKey = (kind) => kind + '|*';
+  const itemKey = (kind, d) => kind + '|' + d;
+  // 可见性过滤：整类忽略 > 单项忽略；计数同步扣减
+  const visibleIssues = report.issues
+    .filter(it => !ignoredSet.has(kindKey(it.kind)))
+    .map(it => {
+      const vis = (it.detail || []).filter(d => !ignoredSet.has(itemKey(it.kind, d)));
+      return { ...it, visibleDetail: vis, visibleCount: Math.max(0, it.count - ((it.detail || []).length - vis.length)) };
+    })
+    .filter(it => it.visibleCount > 0 || (it.detail || []).length === 0);
+  const errs = visibleIssues.filter(i => i.sev === 'high').reduce((t, i) => t + i.visibleCount, 0);
+  const warns = visibleIssues.filter(i => i.sev !== 'high' && i.sev !== 'info').reduce((t, i) => t + i.visibleCount, 0);
   const tint = errs > 0 ? 'rose' : warns > 0 ? 'amber' : 'emerald';
   const chipCls = { rose: 'bg-rose-100 text-rose-700', amber: 'bg-amber-100 text-amber-700', emerald: 'bg-emerald-100 text-emerald-700', slate: 'bg-slate-100 text-slate-500' };
+  const addIgnore = (key) => { if (setQualityIgnores) setQualityIgnores(prev => [...new Set([...(prev || []), key])]); };
+  const removeIgnore = (key) => { if (setQualityIgnores) setQualityIgnores(prev => (prev || []).filter(k => k !== key)); };
+  const openIssue = visibleIssues.find(i => i.kind === open);
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${chipCls[tint]}`}>
           数据质量：{errs > 0 ? errs + ' 项需处理' : warns > 0 ? warns + ' 项提示' : '全部通过'}
         </span>
-        {report.issues.map(it => (
+        {visibleIssues.map(it => (
           <button key={it.kind} onClick={() => setOpen(open === it.kind ? null : it.kind)}
             className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${open === it.kind ? 'bg-indigo-600 text-white' : chipCls[it.sev === 'high' ? 'rose' : it.sev === 'info' ? 'slate' : 'amber']}`}>
-            {it.title}（{it.count}）
+            {it.title}（{it.visibleCount}）
           </button>
         ))}
+        {ignores.length > 0 && (
+          <button onClick={() => setShowIgnored(!showIgnored)}
+            className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${showIgnored ? 'bg-slate-600 text-white' : chipCls.slate}`}>
+            已忽略（{ignores.length}）
+          </button>
+        )}
       </div>
-      {open && (
-        <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 max-h-40 overflow-y-auto">
-          {(report.issues.find(i => i.kind === open)?.detail || []).map((d, i) => (<p key={i} className="text-xs text-slate-600 leading-relaxed">{d}</p>))}
+      {openIssue && (
+        <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 max-h-56 overflow-y-auto">
+          {!isReadOnly && (
+            <div className="flex justify-end mb-1">
+              <button onClick={() => { addIgnore(kindKey(openIssue.kind)); setOpen(null); }}
+                className="text-xs text-slate-400 hover:text-slate-600 underline">忽略整类「{openIssue.title}」</button>
+            </div>
+          )}
+          {openIssue.visibleDetail.map((d, i) => (
+            <div key={i} className="flex items-start justify-between gap-2">
+              <p className="text-xs text-slate-600 leading-relaxed flex-1">{d}</p>
+              {!isReadOnly && (
+                <button onClick={() => addIgnore(itemKey(openIssue.kind, d))}
+                  className="shrink-0 text-xs text-slate-300 hover:text-slate-500">忽略</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {showIgnored && (
+        <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 max-h-56 overflow-y-auto">
+          <p className="text-xs text-slate-400 mb-1">已忽略的项不再计入上方提示，随数据同步给只读版；点击「恢复」重新计入。</p>
+          {ignores.map((k, i) => (
+            <div key={i} className="flex items-start justify-between gap-2">
+              <p className="text-xs text-slate-500 leading-relaxed flex-1">{k.endsWith('|*') ? '【整类】' + k.slice(0, -2) : k.split('|').slice(1).join('|')}</p>
+              {!isReadOnly && (
+                <button onClick={() => removeIgnore(k)} className="shrink-0 text-xs text-indigo-400 hover:text-indigo-600">恢复</button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
