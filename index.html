@@ -11,6 +11,7 @@
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
 <!-- v3.8 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改/质量忽略操作 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · v3.7：时间轴 id 化、数据质量卡、缓存键隔离、防误操作锁 · v3.8：滚动4周周转率、月均折算、质量忽略项同步展示（只读版不可操作） · 基于 v3.8 完整功能裁剪 -->
+<!-- 历史 v3.9 月均周转改有货月口径（在 v3.8 之上）：月均 = 累计周转 ÷ 有货月数，有货周 = 期初>0 或入库>0，无记录周与零库存周不计入分母；有货不足 4 周显示「样本不足」不折算；累计周转原值不变 -->
 <!-- 历史 v3.8 周转率与质量卡体验升级（在 v3.7 数据可靠性之上）：① 滚动周转率改真·滚动4周窗口口径（近4周售出 ÷ 窗口期初期末近似平均库存），一处缺数据只影响前后4周断线、不再永久断线；SKU总览 Sparkline 同步切换；② 累计数量周转 KPI 保持原口径原数值，新增「≈月均 X 次」折算副文案；③ 数据质量卡支持逐项/整类忽略与恢复，忽略项随导出/Gist/本地草稿持久化同步，只读版只展示过滤后视图（无忽略按钮）；导入、ROI、对账等所有数值口径不变 -->
 <!-- 历史 v3.7 数据可靠性定向升级（在 v3.6 活动分析定向重构之上）：① 导入原子事务+预览校验+行级错误（行号/列名/原值）+导入历史+一键撤销；② 三模式语义（upsert 按业务主键更新·默认 / replace 覆盖全部历史 / appendNew 仅新增周期），杜绝重复导入静默累加；③ 时间轴 id 化（YYYY-MM-DD 锚定，TIMELINE_BASE_YEAR=2026，跨年回绕），dataCoverage 键迁 periodId，活动保存写 startPeriodId；④ CSV 强化解析（BOM/千分位/非法整数金额拒绝）；⑤ 统一 genSkuMetrics 唯一实现，缺周保留 null 不补 0；⑥ 数据质量卡（库存恒等式差异/连续性断点/SKU vs 渠道 GMV 对账/缺周记录，只提示不自动修正）；⑦ 同步重写——缓存键隔离、数据源优先级 ?gist=>已存 gistId>默认>./data.json、Gist 走 API 取真实 raw_url、syncSeq+AbortController 防竞态、推送前 revision 冲突检查；⑧ 密码改称「防误操作锁（非安全访问控制）」，活动ROI tab 纳入门禁；⑨ JSON 持久化去派生 skuMetrics + schemaVersion=v3.7。数值口径未变，活动 ROI 与 v3.6 完全一致 -->
 <!-- 历史 v3.6 · 活动分析定向重构 + v3.5 分析数值体系（在 v3.4 readOnly 误锁修复 + 同源 data.json 主源之上）。v3.5 要点：toMetricNumber 数值体系、缺失显示「—」、Sparkline 断线、利润监控净利公式修正（单件净利=实际售价×(1−运营率)−供货价）、上传 append 幂等修复、Gist truncated 改走 raw_url 完整下载。v3.6 明细见下行 -->
@@ -592,16 +593,21 @@ function genSkuMetrics(skus, weeks, periods){
         for(let j=ws;j<=i;j++){ const sv=(series[j]||{}).sales; if(typeof sv==='number'&&Number.isFinite(sv)) winSales+=sv; else winComplete=false; }
         if(winBegin!==null && end!==null && winComplete){ const avg=(winBegin+end)/2; turnover4w=avg>0?+(winSales/avg).toFixed(4):null; } }
       // v3.9：累计有货天数——有货周=期初>0 或 入库>0（该周有货可卖）；无记录周与记录在案零库存周均不计入
-      let inStockDays=0;
+      // v3.10：有货率 = 有货天数 ÷ 自首条有记录周以来的天数（分母不含未上市期；断货周与断档周都会拉低）
+      let inStockDays=0, spanDays=0, seenAny=false;
       for(let j=0;j<=i;j++){ const wj=series[j]||{};
         const b=has(wj.begin)?wj.begin:null, ib=has(wj.inbound)?wj.inbound:null;
-        if((b!==null&&b>0)||(ib!==null&&ib>0)) inStockDays += (periods[j]&&periods[j].days)||WEEK_DAYS; }
+        if(!seenAny && ['begin','inbound','sales','gmv','end'].some(k=>has(wj[k]))) seenAny=true;
+        const dj=(periods[j]&&periods[j].days)||WEEK_DAYS;
+        if(seenAny) spanDays += dj;
+        if((b!==null&&b>0)||(ib!==null&&ib>0)) inStockDays += dj; }
+      const inStockRate = spanDays>0 ? +(inStockDays/spanDays).toFixed(3) : null;
       const dailyAvg=(sales===null)?null:+(sales/days).toFixed(2);
       const avgPrice=(sales===null||sales===0||gmv===null)?null:+(gmv/sales).toFixed(2);
       return { period:p?p.label:'', periodId:p?p.id:'',
         begin, inbound, end, sales, gmv,
         unitPrice:avgPrice,
-        ratio, ratioNet, ratioStatus, turnover, turnover4w, inStockDays, dailyAvg, avgPrice };
+        ratio, ratioNet, ratioStatus, turnover, turnover4w, inStockDays, inStockRate, dailyAvg, avgPrice };
     });
   }
   return out;
@@ -956,7 +962,7 @@ const TABS = [
 
 ];
 
-function Sparkline({ data, dataKey, color, valueFormatter }) {
+function Sparkline({ data, dataKey, color, valueFormatter, valueColor }) {
   const rows = Array.isArray(data) ? data : [];
   const latestValue = rows.length
     ? toMetricNumber(rows[rows.length - 1]?.[dataKey])
@@ -1021,8 +1027,9 @@ function Sparkline({ data, dataKey, color, valueFormatter }) {
         )}
       </svg>
       <span
-        className="text-xs tabular-nums text-slate-600 text-right"
-        style={{ minWidth: '3rem' }}
+        className="text-xs tabular-nums text-right"
+        style={{ minWidth: '3rem', fontWeight: valueColor ? 600 : 400,
+          color: (valueColor && latestValue !== null) ? valueColor(latestValue) : '#475569' }}
       >
         {latestValue === null
           ? '—'
@@ -1043,6 +1050,9 @@ function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
     { key: 'ratioNet', label: '库销比（净）', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : (v >= 99 ? '∞' : v.toFixed(2)) },
 
     { key: 'turnover4w', label: '滚动周转率(近4周)', color: '#0d9488', fmt: v => !Number.isFinite(v) ? '—' : (v * 100).toFixed(2) + '%' },
+
+    { key: 'inStockRate', label: '有货率', color: '#64748b', fmt: v => !Number.isFinite(v) ? '—' : (v * 100).toFixed(0) + '%',
+      valueColor: v => v < 0.6 ? '#e11d48' : v < 0.85 ? '#d97706' : '#059669' },
 
     { key: 'dailyAvg', label: '周均日销', color: '#6366f1', fmt: v => !Number.isFinite(v) ? '—' : v.toFixed(2) },
 
@@ -1104,7 +1114,7 @@ function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
 
                     <td key={m.key} className="px-3 py-2">
 
-                      {!isEmpty ? <Sparkline data={series} dataKey={m.key} color={m.color} valueFormatter={m.fmt} /> : <span className="text-xs text-slate-400">—</span>}
+                      {!isEmpty ? <Sparkline data={series} dataKey={m.key} color={m.color} valueFormatter={m.fmt} valueColor={m.valueColor} /> : <span className="text-xs text-slate-400">—</span>}
 
                     </td>
 
