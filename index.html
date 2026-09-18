@@ -11,6 +11,7 @@
 <title>兆丰渠道周转 · 全维看板（仅阅读）</title>
 
 <!-- v3.8 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改/质量忽略操作 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · v3.7：时间轴 id 化、数据质量卡、缓存键隔离、防误操作锁 · v3.8：滚动4周周转率、月均折算、质量忽略项同步展示（只读版不可操作） · 基于 v3.8 完整功能裁剪 -->
+<!-- 历史 v3.8 周转率与质量卡体验升级（在 v3.7 数据可靠性之上）：① 滚动周转率改真·滚动4周窗口口径（近4周售出 ÷ 窗口期初期末近似平均库存），一处缺数据只影响前后4周断线、不再永久断线；SKU总览 Sparkline 同步切换；② 累计数量周转 KPI 保持原口径原数值，新增「≈月均 X 次」折算副文案；③ 数据质量卡支持逐项/整类忽略与恢复，忽略项随导出/Gist/本地草稿持久化同步，只读版只展示过滤后视图（无忽略按钮）；导入、ROI、对账等所有数值口径不变 -->
 <!-- 历史 v3.7 数据可靠性定向升级（在 v3.6 活动分析定向重构之上）：① 导入原子事务+预览校验+行级错误（行号/列名/原值）+导入历史+一键撤销；② 三模式语义（upsert 按业务主键更新·默认 / replace 覆盖全部历史 / appendNew 仅新增周期），杜绝重复导入静默累加；③ 时间轴 id 化（YYYY-MM-DD 锚定，TIMELINE_BASE_YEAR=2026，跨年回绕），dataCoverage 键迁 periodId，活动保存写 startPeriodId；④ CSV 强化解析（BOM/千分位/非法整数金额拒绝）；⑤ 统一 genSkuMetrics 唯一实现，缺周保留 null 不补 0；⑥ 数据质量卡（库存恒等式差异/连续性断点/SKU vs 渠道 GMV 对账/缺周记录，只提示不自动修正）；⑦ 同步重写——缓存键隔离、数据源优先级 ?gist=>已存 gistId>默认>./data.json、Gist 走 API 取真实 raw_url、syncSeq+AbortController 防竞态、推送前 revision 冲突检查；⑧ 密码改称「防误操作锁（非安全访问控制）」，活动ROI tab 纳入门禁；⑨ JSON 持久化去派生 skuMetrics + schemaVersion=v3.7。数值口径未变，活动 ROI 与 v3.6 完全一致 -->
 <!-- 历史 v3.6 · 活动分析定向重构 + v3.5 分析数值体系（在 v3.4 readOnly 误锁修复 + 同源 data.json 主源之上）。v3.5 要点：toMetricNumber 数值体系、缺失显示「—」、Sparkline 断线、利润监控净利公式修正（单件净利=实际售价×(1−运营率)−供货价）、上传 append 幂等修复、Gist truncated 改走 raw_url 完整下载。v3.6 明细见下行 -->
 <!-- 附 v3.6 规则明细 · 活动分析定向重构：① 新增可持久化 dataCoverage 覆盖元数据（complete/partial/unknown + coveredSkuCodes + missingMeansZero + batchId），上传即盖章、随导出/Gist/本地存储贯通，旧数据一律 unknown 不自动盖章；② 统一 baseline/window/post 周对象（gmv/sales 分别判完整、missingSkus/missingFields/missingPrices），缺失≠0，未盖章缺失行不计为 0；Baseline 返回实际使用与跳过周期；窗口区分日历未满与数据缺失，未满只做已观察周同口径暂估；Post 缺失周不按 0 计入；③ ROI 与利润数据依赖分离——缺成本/供价对应侧利润返回 null+原因，不以 0 或估算价代替，品牌缺成本不连带隐藏托盘商利润；④ 数学边界——safeDiv 零分母返回 null 不再 Infinity，r2 不再把 null/NaN 压成 0；新增有符号净增量GMV；零基线 Lift=null；投入≤0 ROI=null/Grade=—；无正增量 ROI=0 且成本率=null；无 Post persistence=null + 基础因子 0.5 暂估 ROI 标记 provisional；⑤ 风险状态多标签拆分（brand_total_loss/brand_incremental_loss/window_incomplete/window_data_missing/post_data_missing/observing/baseline_insufficient/baseline_zero/price_missing/coverage_unknown/attribution_overlap/investment_not_applicable/no_positive_increment）；activityStats 互斥主状态 completed/observing/insufficient/invalid 之和=total，Baseline不足活动投入仍计入全部已录入投入，利润合计无样本为 null，每个聚合显示纳入/排除活动数；⑥ 最终结论门控（窗口完整+Baseline可用+Post完成+完整性确认+利润可靠），不满足只给暂估/待补数据；持续性文案 null/0/>0/<0 四态分明；⑦ 「1x投入回本线」正名「1x增量销售效率参考线（非利润回本线）」，增量净利率补公式 tooltip（品牌=增量贡献净额/供货测算收入，托盘商=增量经济净额/终端GMV），托盘商 含返利/不含返利 字段与标题统一；⑧ 归因重叠=时间×渠道×SKU 三项同时重叠才成立（ALL 与任意渠道相交），污染 Baseline/Post 先提示不分摊，合计改名活动口径合计可能重复归因；⑨ 诊断按周真实状态展示（完整/明确零销量/部分缺失/完整性未知/未到观察期），整周缺失入 missingPeriods，删除无条件绿勾；⑩ activityResultMap useMemo 单次计算，汇总/统计/矩阵/按钮/详情同源读取；⑪ 稀疏假设测算结果标记 reliability=assumed + 紫色横幅，不进最终评级/质量矩阵/正式汇总 -->
@@ -590,12 +591,17 @@ function genSkuMetrics(skus, weeks, periods){
         let winSales=0, winComplete=true;
         for(let j=ws;j<=i;j++){ const sv=(series[j]||{}).sales; if(typeof sv==='number'&&Number.isFinite(sv)) winSales+=sv; else winComplete=false; }
         if(winBegin!==null && end!==null && winComplete){ const avg=(winBegin+end)/2; turnover4w=avg>0?+(winSales/avg).toFixed(4):null; } }
+      // v3.9：累计有货天数——有货周=期初>0 或 入库>0（该周有货可卖）；无记录周与记录在案零库存周均不计入
+      let inStockDays=0;
+      for(let j=0;j<=i;j++){ const wj=series[j]||{};
+        const b=has(wj.begin)?wj.begin:null, ib=has(wj.inbound)?wj.inbound:null;
+        if((b!==null&&b>0)||(ib!==null&&ib>0)) inStockDays += (periods[j]&&periods[j].days)||WEEK_DAYS; }
       const dailyAvg=(sales===null)?null:+(sales/days).toFixed(2);
       const avgPrice=(sales===null||sales===0||gmv===null)?null:+(gmv/sales).toFixed(2);
       return { period:p?p.label:'', periodId:p?p.id:'',
         begin, inbound, end, sales, gmv,
         unitPrice:avgPrice,
-        ratio, ratioNet, ratioStatus, turnover, turnover4w, dailyAvg, avgPrice };
+        ratio, ratioNet, ratioStatus, turnover, turnover4w, inStockDays, dailyAvg, avgPrice };
     });
   }
   return out;
@@ -2002,7 +2008,11 @@ useEffect(() => {
 
                 value={cur.turnover==null?'—':(cur.turnover*100).toFixed(2)+'%'} chg={delta('turnover')}
 
-                sub={cur.turnover==null?undefined:`≈ 月均 ${(cur.turnover/(safeSeries.length*7/30)).toFixed(1)} 次（累计 ÷ ${(safeSeries.length*7/30).toFixed(1)} 个月）· 期初期末两点近似平均库存，含补货周会偏乐观`}/>
+                sub={cur.turnover==null?undefined:(cur.inStockDays>=28
+
+                  ?`≈ 月均 ${(cur.turnover/(cur.inStockDays/30)).toFixed(1)} 次（按有货 ${(cur.inStockDays/30).toFixed(1)} 个月折算）· 期初期末两点近似，含补货周偏乐观`
+
+                  :`样本不足（有货仅 ${Math.floor(cur.inStockDays/7)} 周）· 累计 ${cur.turnover.toFixed(2)} 次，暂不折算月均`)}/>
 
               <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#6366f1" label="周均日销"
 
