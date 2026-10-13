@@ -8,9 +8,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>兆丰渠道周转 · 全维看板（仅阅读）</title>
+<title>兆丰渠道周转 · 全维看板</title>
 
-<!-- v3.8 在线仅阅读版 · isReadOnly 强制为 true · 上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改/质量忽略操作 全部移除 · 数据主源为同源 ./data.json（本地推送时双写），Gist 兜底 · 含同步状态徽章 · 分析数值缺失显示「—」、Sparkline 断线、净利公式修正 · 活动分析 v3.6：dataCoverage 覆盖元数据、暂估/确认双态、诊断五态周视图 · v3.7：时间轴 id 化、数据质量卡、缓存键隔离、防误操作锁 · v3.8：滚动4周周转率、月均折算、质量忽略项同步展示（只读版不可操作） · 基于 v3.8 完整功能裁剪 -->
+<!-- v3.10 SKU 汇总表新增「有货率」列（在 v3.9 之上）：有货率 = 累计有货天数 ÷ 自首条有记录周以来的天数（分母不含未上市期），<60% 红（断货严重）/ <85% 黄 / 否则绿；区分「断货」与「动销不行」两类问题品 -->
 <!-- 历史 v3.9 月均周转改有货月口径（在 v3.8 之上）：月均 = 累计周转 ÷ 有货月数，有货周 = 期初>0 或入库>0，无记录周与零库存周不计入分母；有货不足 4 周显示「样本不足」不折算；累计周转原值不变 -->
 <!-- 历史 v3.8 周转率与质量卡体验升级（在 v3.7 数据可靠性之上）：① 滚动周转率改真·滚动4周窗口口径（近4周售出 ÷ 窗口期初期末近似平均库存），一处缺数据只影响前后4周断线、不再永久断线；SKU总览 Sparkline 同步切换；② 累计数量周转 KPI 保持原口径原数值，新增「≈月均 X 次」折算副文案；③ 数据质量卡支持逐项/整类忽略与恢复，忽略项随导出/Gist/本地草稿持久化同步，只读版只展示过滤后视图（无忽略按钮）；导入、ROI、对账等所有数值口径不变 -->
 <!-- 历史 v3.7 数据可靠性定向升级（在 v3.6 活动分析定向重构之上）：① 导入原子事务+预览校验+行级错误（行号/列名/原值）+导入历史+一键撤销；② 三模式语义（upsert 按业务主键更新·默认 / replace 覆盖全部历史 / appendNew 仅新增周期），杜绝重复导入静默累加；③ 时间轴 id 化（YYYY-MM-DD 锚定，TIMELINE_BASE_YEAR=2026，跨年回绕），dataCoverage 键迁 periodId，活动保存写 startPeriodId；④ CSV 强化解析（BOM/千分位/非法整数金额拒绝）；⑤ 统一 genSkuMetrics 唯一实现，缺周保留 null 不补 0；⑥ 数据质量卡（库存恒等式差异/连续性断点/SKU vs 渠道 GMV 对账/缺周记录，只提示不自动修正）；⑦ 同步重写——缓存键隔离、数据源优先级 ?gist=>已存 gistId>默认>./data.json、Gist 走 API 取真实 raw_url、syncSeq+AbortController 防竞态、推送前 revision 冲突检查；⑧ 密码改称「防误操作锁（非安全访问控制）」，活动ROI tab 纳入门禁；⑨ JSON 持久化去派生 skuMetrics + schemaVersion=v3.7。数值口径未变，活动 ROI 与 v3.6 完全一致 -->
@@ -1142,8 +1142,7 @@ function SkuOverviewTable({ skuMaster, skuMetrics, onSelectSku }) {
 
 function Dashboard(){
 
-  // 在线仅阅读版：强制只读，所有编辑入口（上传/导入/导出/Gist同步/SKU维护/设置密码/成本/供货价/控价/运营费率/活动增删改）无条件移除，仅保留阅览与 Gist 数据拉取
-  const isReadOnly = true;
+  const isReadOnly = typeof window !== 'undefined' && window.location.protocol !== 'file:';
 
 
 
@@ -2201,13 +2200,14 @@ useEffect(() => {
 
         {tab==='price' && <PriceCtrlView ctrl={ctrl} setCtrl={setCtrl} skuCode={skuCode} setSkuCode={setSkuCode} skuMetrics={skuMetrics} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} isReadOnly={isReadOnly} />}
 
+        <BatchUploadModal open={showUploadSku} onClose={()=>setShowUploadSku(false)} mode="sku" onApply={applySkuUpload} onPreview={(rows,m)=>previewUpload('sku',rows,m)} skuMaster={skuMaster}/>
+        <BatchUploadModal open={showUploadChannel} onClose={()=>setShowUploadChannel(false)} mode="channel" onApply={applyChannelUpload} onPreview={(rows,m)=>previewUpload('channel',rows,m)} skuMaster={skuMaster}/>
 
-        {/* 在线仅阅读版：BatchUploadModal / SkuManagerModal / PasswordSetting / GistSyncModal 等上传与编辑弹窗已物理移除 */}
         <div className="flex items-start gap-2 text-xs text-slate-400 px-1 pb-4">
 
           <Info className="w-3.5 h-3.5 mt-0.5 shrink-0"/>
 
-          <span>数据由本地可编辑版维护并通过 Gist 同步推送；本页面为仅阅读版本，不提供任何编辑与上传入口。</span>
+          <span>{hasRealData?'已加载真实数据。':'当前为演示数据。'}口径与你的总表公式一致。库销比(净)已剔除当周入库；滚动周转=近4周售出÷((窗口期初+期末)/2)；倒算均价=GMV÷售出件数。成本/控价支持批量上传（覆盖更新）。</span>
 
         </div>
 
@@ -2220,6 +2220,9 @@ useEffect(() => {
         
 
         {showTotalTrend && <TotalTrendModal data={totalTrendData} mode={showTotalTrend} onClose={()=>setShowTotalTrend(null)}/>}
+        {showSkuManager && <SkuManagerModal skuMaster={skuMaster} setSkuMaster={setSkuMaster} regenerateAll={regenerateAll} onClose={()=>setShowSkuManager(false)}/>}
+        {showPassSetting && <PasswordSetting current={safeStorage.getItem('zhaofeng_password')} onSave={(val)=>{safeStorage.setItem('zhaofeng_password',val); setUnlocked(false);}} onClose={()=>setShowPassSetting(false)}/>}
+        {showGistSync && <GistSyncModal data={{skuMaster,skuWeeks,channelWeekly,channelSkuWeekly,cost,supply,ctrl,PERIODS,activities,opRate,dataCoverage,importHistory,qualityIgnores,schemaVersion:SCHEMA_VERSION,datasetId:DATASET_ID,version:'v3.8',exportedAt:Date.now()}} onLoad={loadDataFromJson} onClose={()=>setShowGistSync(false)}/>}
 
         
 
@@ -4555,6 +4558,7 @@ function ProfitView({cost,setCost,supply,setSupply,skuWeeks,skuMaster,isReadOnly
 
       {showSupplyDetail && <SupplyDetailModal skuMaster={skuMaster} skuWeeks={skuWeeks} supply={supply} onClose={()=>setShowSupplyDetail(false)} />}
 
+      {!isReadOnly && <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="cost" onApply={applyUpload} skuMaster={skuMaster}/>}
 
     </div>
 
@@ -4774,6 +4778,7 @@ function PriceCtrlView({ctrl,setCtrl,skuCode,setSkuCode,skuMetrics,skuWeeks,skuM
 
       </div>
 
+      {!isReadOnly && <BatchUploadModal open={showUpload} onClose={()=>setShowUpload(false)} mode="price" onApply={applyUpload} skuMaster={skuMaster}/>}
 
     </div>
 
@@ -6540,7 +6545,7 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400 text-sm">
           <Target className="w-12 h-12 mx-auto mb-3 text-slate-300"/>
           <p>暂无活动数据</p>
-          <p className="mt-1">暂无活动数据，待本地可编辑版录入并同步后在此展示</p>
+          <p className="mt-1">点击「新增活动」录入第一场活动，系统将自动计算 ROI</p>
         </div>
       )}
     </div>
@@ -6983,7 +6988,7 @@ function GistSyncModal({data,onLoad,onClose}){
 
   const pull=async()=>{if(!gistId){showMsg('请输入 Gist ID');return;} setLoading(true); try{const res=await fetch(`https://api.github.com/gists/${gistId}`,{headers:token?{'Authorization':`token ${token}`,'Accept':'application/vnd.github.v3+json'}:{}}); const json=await res.json(); if(!res.ok)throw new Error(json.message||`HTTP ${res.status}`); const file=json.files?.['data.json']; if(!file)throw new Error('Gist 中未找到 data.json'); let content=file.content; if(file.truncated||!content){const rawRes=await fetchT(file.raw_url+`?t=${Date.now()}`,{},240000); if(!rawRes.ok)throw new Error(`raw 下载失败 HTTP ${rawRes.status}`); content=await rawRes.text();} let parsed; try{parsed=JSON.parse(content);}catch(pe){throw new Error('数据下载不完整（网络中断），请重试');} onLoad(parsed); safeStorage.setItem('zhaofeng_gist_id',gistId); showMsg('✅ 拉取成功，数据已更新');}catch(e){showMsg('❌ 失败: '+(e.name==='AbortError'?'网络超时（240s），请检查网络后重试':e.message));}finally{setLoading(false);}};
 
-  return <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto"><div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-auto"><div className="flex items-center justify-between px-5 py-4 border-b border-slate-100"><h3 className="font-bold flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-600"/>Gist 同步</h3><button onClick={onClose} className="..."><X className="w-5 h-5"/></button></div><div className="p-5 space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700"><p className="font-semibold">首次使用流程：</p><ol className="list-decimal list-inside mt-1 space-y-0.5"><li>生成 Token，勾选 gist + repo 权限（repo 用于在线数据文件双写）</li><li>输入 Token 点击「推送」→ 自动生成 secret Gist</li><li>记录 Gist ID，填入 HTML 中 GIST_ID 常量</li></ol></div><div className="space-y-2"><label className="text-sm text-slate-600">GitHub PAT Token</label><input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"/></div><div className="space-y-2"><label className="text-sm text-slate-600">Gist ID</label><input type="text" value={gistId} onChange={e=>setGistId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"/></div>{status&&<p className="text-xs px-3 py-2 rounded-lg bg-slate-50 text-slate-700">{status}</p>}<div className="flex justify-end gap-2"><button onClick={onClose} className="...">关闭</button><button onClick={pull} disabled={loading} className="...">拉取</button><button onClick={push} disabled={loading} className="...">{loading?('推送中 '+stage):'推送'}</button></div></div></div></div>;
+  return <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto"><div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-auto"><div className="flex items-center justify-between px-5 py-4 border-b border-slate-100"><h3 className="font-bold flex items-center gap-2"><Upload className="w-5 h-5 text-indigo-600"/>Gist 同步</h3><button onClick={onClose} className="..."><X className="w-5 h-5"/></button></div><div className="p-5 space-y-4"><div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700"><p className="font-semibold">首次使用流程：</p><ol className="list-decimal list-inside mt-1 space-y-0.5"><li>生成 Token，勾选 gist + repo 权限（repo 用于在线数据文件双写）</li><li>输入 Token 点击「推送」→ 自动生成 secret Gist</li><li>记录 Gist ID，填入 HTML 中 GIST_ID 常量</li></ol></div><div className="space-y-2"><label className="text-sm text-slate-600">GitHub PAT Token</label><input type="password" value={token} onChange={e=>setToken(e.target.value.trim())} placeholder="ghp_xxxxxxxxxxxx" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"/></div><div className="space-y-2"><label className="text-sm text-slate-600">Gist ID</label><input type="text" value={gistId} onChange={e=>setGistId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono"/></div>{status&&<p className="text-xs px-3 py-2 rounded-lg bg-slate-50 text-slate-700">{status}</p>}<div className="flex justify-end gap-2"><button onClick={onClose} className="...">关闭</button><button onClick={pull} disabled={loading} className="...">拉取</button><button onClick={push} disabled={loading} className="...">{loading?('推送中 '+stage):'推送'}</button></div></div></div></div>;
 
 }
 
