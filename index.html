@@ -313,6 +313,20 @@ function isRealDate(y,m,d){ if(!Number.isInteger(y)||!Number.isInteger(m)||!Numb
 function makePeriodId(y,m,d){ return isRealDate(y,m,d)?(y+'-'+pad2(m)+'-'+pad2(d)):null; }
 function periodLabelFromId(id){ const p=String(id||'').split('-'); return p.length===3?(parseInt(p[1],10)+'/'+parseInt(p[2],10)):String(id||''); }
 
+/* v3.9：未来 N 周预录周期（不写入 PERIODS，仅供活动预录入起始周的选择与保存解析） */
+function genFuturePeriods(n){
+  const last = PERIODS[PERIODS.length-1];
+  const out = [];
+  if (!last) return out;
+  const y0=+String(last.id).slice(0,4), m0=+String(last.id).slice(5,7), d0=+String(last.id).slice(8,10);
+  for (let k=1;k<=(n||8);k++){
+    const dt=new Date(Date.UTC(y0, m0-1, d0+7*k));
+    const id=makePeriodId(dt.getUTCFullYear(), dt.getUTCMonth()+1, dt.getUTCDate());
+    if (id) out.push({ id, days: WEEK_DAYS, label: periodLabelFromId(id), future: true });
+  }
+  return out;
+}
+
 /* 解析周期输入 → {y,m,d,id}；缺年份且无锚定年 → {needYear:true}（禁止用当前年份/随机年猜测） */
 function parsePeriodInput(raw, anchorYear){
   const s=String(raw??'').trim(); if(!s) return null;
@@ -5080,7 +5094,12 @@ function calculateActivityCore(input) {
   const { act, PERIODS, skuMaster, skuWeeks, channelSkuWeekly, cost, supply, opRate, dataCoverage, activities, hasChannelSkuData } = input;
   let startIdx = act.startPeriodId ? PERIODS.findIndex(p => p.id === act.startPeriodId) : -1;
   if (startIdx < 0) startIdx = PERIODS.findIndex(p => p.label === act.startWeek); // 旧活动 label 兜底
-  if (startIdx < 0) return { error: `起始周 "${act.startWeek}" 不在时间轴中，当前可用周期：${PERIODS.map(p => p.label).join('、')}`, status: 'invalid' };
+  if (startIdx < 0) {
+    if (act.startPeriodId && /^\d{4}-\d{2}-\d{2}$/.test(act.startPeriodId)) {
+      return { error: `活动尚未开始：起始周 ${act.startWeek || act.startPeriodId} 晚于当前数据（截至 ${PERIODS[PERIODS.length-1]?.label || '-'}）。活动为预录入状态，数据每周滚动更新到该周后，Baseline / 窗口 / ROI 将自动开始计算。`, status: 'not_started' };
+    }
+    return { error: `起始周 "${act.startWeek}" 不在时间轴中，当前可用周期：${PERIODS.map(p => p.label).join('、')}`, status: 'invalid' };
+  }
 
   const activityChannel = act.activityChannel || 'ALL';
   const isAllChannels = !activityChannel || activityChannel === 'ALL';
@@ -5679,7 +5698,9 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
       const inv = toMetricNumber(res?.investment?.totalBrandInvestment ?? res?.economics?.investment?.totalBrandInvestment);
       if (inv !== null) totalInvestmentAll += inv;
       if (!res || res.error) {
-        if (res?.status === 'baseline_insufficient') insufficient++; else invalid++;
+        if (res?.status === 'baseline_insufficient') insufficient++;
+        else if (res?.status === 'not_started') observing++; // 预录未来活动计入「观察中」，不算无效
+        else invalid++;
         return;
       }
       if (res.attributionOverlap) overlapAny = true;
@@ -5790,12 +5811,17 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
     const rebateVal = Math.max(0, toSafeNum(fRebate, 0));
     if (!fName || !fStartWeek || (investment + consumerSub + rebateVal) <= 0) { alert('请填写活动名称、起始周和品牌投入'); return; }
     if (!editingId && hasChannelSkuData && !fActivityChannel) { alert('请选择活动平台'); return; }
-    const startIdx = PERIODS.findIndex(p => p.label === fStartWeek);
+    // v3.9：起始周支持未来周预录——先按现有时间轴匹配，再按未来 8 周生成表匹配，最后按通用解析兜底
+    let startIdx = PERIODS.findIndex(p => p.label === fStartWeek);
+    let startPeriodId = startIdx >= 0 ? PERIODS[startIdx].id : null;
+    if (!startPeriodId) { const fp = genFuturePeriods(8).find(p => p.label === fStartWeek); if (fp) startPeriodId = fp.id; }
+    if (!startPeriodId) { const pi = parsePeriodInput(fStartWeek, TIMELINE_BASE_YEAR); if (pi && pi.id) startPeriodId = pi.id; }
     const w = Number(fWindow || 3);
-    if (startIdx < 0) { alert('起始周无效'); return; }
+    if (!startPeriodId) { alert('起始周无效'); return; }
+    const startWeekLabel = startIdx >= 0 ? PERIODS[startIdx].label : periodLabelFromId(startPeriodId);
     const newAct = {
       id: editingId || Date.now().toString(), name: fName,
-      activityChannel: fActivityChannel || 'ALL', startWeek: fStartWeek, startPeriodId: PERIODS[startIdx]?.id || null,
+      activityChannel: fActivityChannel || 'ALL', startWeek: startWeekLabel, startPeriodId: startPeriodId,
       windowPeriods: Number(fWindow) || 3, baselinePeriods: Number(fBaseline) || 8, postPeriods: Number(fPost) || 4,
       brandInvestment: investment,
       consumerPriceSubsidy: consumerSub, distributorRebate: rebateVal,
@@ -5888,14 +5914,12 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
             )}
             <div><label className="text-xs text-slate-500 mb-1 block">活动起始周</label><select value={fStartWeek} onChange={e => setFStartWeek(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
                   {(() => {
-                    // v3.2（规则二十四）：只允许选择能完整覆盖 Activity Window 的起始周；
-                    // 编辑历史活动时保留原起始周选项，不强制改写
-                    const w = Math.max(1, Number(fWindow) || 3);
-                    const validOpts = PERIODS.filter((p, i) => i + w <= PERIODS.length);
-                    const curIdx = PERIODS.findIndex(p => p.label === fStartWeek);
-                    const keepCurrent = !!editingId && curIdx >= 0 && !validOpts.some(p => p.label === fStartWeek);
-                    const opts = keepCurrent ? [...validOpts, PERIODS[curIdx]] : validOpts;
-                    return opts.slice().reverse().map(p => <option key={p.idx} value={p.label}>{p.label}{keepCurrent && p.label === fStartWeek ? '（当前·窗口未满）' : ''}</option>);
+                    // v3.9：起始周全放开——全部历史周可选（窗口超出数据按「观察中·窗口未满」软降级，见下方提示），
+                    // 并追加未来 8 周供活动预录入；编辑历史活动时保留原起始周选项，不强制改写
+                    const base = [...PERIODS, ...genFuturePeriods(8)];
+                    const keepCurrent = !!editingId && fStartWeek && !base.some(p => p.label === fStartWeek);
+                    const opts = keepCurrent ? [...base, { label: fStartWeek }] : base;
+                    return opts.slice().reverse().map(p => <option key={p.id || p.label} value={p.label}>{p.label}{p.future ? '（预录·未来周）' : ''}{keepCurrent && p.label === fStartWeek ? '（当前）' : ''}</option>);
                   })()}
                 </select>
                 {(() => {
@@ -5904,20 +5928,12 @@ function ActivityView({ skuWeeks, skuMaster, channelSkuWeekly, channelWeekly, ac
                   if (idx >= 0 && idx + w > PERIODS.length) {
                     return <p className="text-xs text-amber-500 mt-1">窗口超出已有数据 {idx + w - PERIODS.length} 周：保存后活动按可用周数计算，标记「观察中 · 窗口未满」，数据补齐后自动转正常定级</p>;
                   }
+                  if (idx < 0 && fStartWeek) {
+                    return <p className="text-xs text-sky-500 mt-1">预录未来活动：起始周尚无经营数据，保存后活动标记「未开始」；数据每周滚动更新到该周后，Baseline / 窗口 / ROI 将自动计算</p>;
+                  }
                   return null;
                 })()}</div>
-            <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => {
-              const nw = Math.max(1, Number(e.target.value) || 1);
-              setFWindow(nw);
-              // v3.2（规则二十四）：窗口变化后，起始周可选范围动态变化；新建时自动校正到最近的可完整覆盖起始周
-              if (!editingId) {
-                const idx = PERIODS.findIndex(p => p.label === fStartWeek);
-                if (idx >= 0 && idx + nw > PERIODS.length) {
-                  const ni = Math.max(0, PERIODS.length - nw);
-                  setFStartWeek(PERIODS[ni]?.label || '');
-                }
-              }
-            }} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">活动窗口（周）</label><input type="number" min={1} max={8} value={fWindow} onChange={e => setFWindow(Math.max(1, Number(e.target.value) || 1))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">Baseline 周数</label><input type="number" min={2} max={12} value={fBaseline} onChange={e => setFBaseline(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">活动后观察（周）</label><input type="number" min={1} max={8} value={fPost} onChange={e => setFPost(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
             <div><label className="text-xs text-slate-500 mb-1 block">品牌基础投入（元）</label><input type="number" min={0} value={fInvestment} onChange={e => setFInvestment(e.target.value)} placeholder="现金+赠品+物料..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"/></div>
