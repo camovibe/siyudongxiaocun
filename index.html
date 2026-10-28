@@ -1593,7 +1593,11 @@ function Dashboard(){
 
       const cachedNew = safeStorage.getItem('zhaofeng_data__local');
 
-      cached = cachedNew || safeStorage.getItem('zhaofeng_data'); // 旧键只在本地 file:// 作显式迁移来源
+      const legacyDraft = safeStorage.getItem('zhaofeng_data');
+
+      cached = cachedNew || legacyDraft; // 旧键只在本地 file:// 作显式迁移来源
+
+      if (legacyDraft) safeStorage.removeItem('zhaofeng_data'); // v3.8.2：旧键读取后即删（约 4MB），释放配额；草稿由自动保存重写到新键
 
     }
 
@@ -1620,20 +1624,53 @@ function Dashboard(){
 
 
 
-useEffect(() => {
+// v3.8.2：本地草稿持久化（含手动重试入口）。配额不足时自动清理可再生缓存后重试；仍失败则亮横幅
+  const persistLocal = () => {
 
-    if (typeof window === 'undefined') return;
-
-    if (!hydratedRef.current) return; // v3.7（规则八）：首次 hydration 完成后才允许自动保存
+    if (typeof window === 'undefined') return false;
 
     // demo 来源的编辑也保存为「本地草稿」（source 标记区分）；不再存派生 skuMetrics（减体积，加载时重算）
     const data = { skuMaster, skuWeeks, channelWeekly, channelSkuWeekly, cost, supply, ctrl, PERIODS, activities, opRate, dataCoverage, importHistory, qualityIgnores,
 
       schemaVersion: SCHEMA_VERSION, datasetId: DATASET_ID, version: 'v3.8', source: hasRealData ? 'real' : 'demo-draft', modifiedAt: Date.now(), exportedAt: Date.now() };
 
-    const okSave = safeStorage.setItem('zhaofeng_data__local', JSON.stringify(data));
+    let json;
+    try { json = JSON.stringify(data); } catch(e) { setSaveError(true); return false; }
+
+    let okSave = safeStorage.setItem('zhaofeng_data__local', json);
+
+    if (!okSave) {
+      // 重试 1：清理旧版遗留键 + 在线缓存键（均可重新拉取/再生）
+      safeStorage.removeItem('zhaofeng_data');
+      try {
+        const toDel = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && (k.indexOf('zhaofeng_data__gist_') === 0 || k === 'zhaofeng_data__pages')) toDel.push(k);
+        }
+        toDel.forEach(k => safeStorage.removeItem(k));
+      } catch(e) {}
+      okSave = safeStorage.setItem('zhaofeng_data__local', json);
+    }
+
+    if (!okSave) {
+      // 重试 2：清掉持久化的撤销快照（本次会话内的撤销不受影响），优先保住草稿
+      safeStorage.removeItem('zhaofeng_import_undo');
+      okSave = safeStorage.setItem('zhaofeng_data__local', json);
+    }
 
     setSaveError(!okSave); // 保存失败（如超配额）必须可见
+    return okSave;
+
+  };
+
+  useEffect(() => {
+
+    if (typeof window === 'undefined') return;
+
+    if (!hydratedRef.current) return; // v3.7（规则八）：首次 hydration 完成后才允许自动保存
+
+    persistLocal();
 
   }, [skuMaster, skuWeeks, skuMetrics, channelWeekly, channelSkuWeekly, cost, supply, ctrl, activities, opRate, dataCoverage, importHistory, qualityIgnores, hasRealData]);
 
@@ -1678,7 +1715,7 @@ useEffect(() => {
 
       setImportUndo(_undo);
 
-      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify(_undo)); // v3.8.1：撤销快照仅本机持久化，不随 Gist 同步
+      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify({..._undo, snapshot:{..._undo.snapshot, skuMetrics:undefined}})); // v3.8.1：撤销快照仅本机持久化，不随 Gist 同步；v3.8.2：skuMetrics 为派生数据不落盘（省配额），恢复时重算
 
       commitPeriodsInPlace(res.periods);
 
@@ -1732,7 +1769,7 @@ useEffect(() => {
 
       setImportUndo(_undo);
 
-      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify(_undo));
+      safeStorage.setItem('zhaofeng_import_undo', JSON.stringify({..._undo, snapshot:{..._undo.snapshot, skuMetrics:undefined}})); // v3.8.2：skuMetrics 为派生数据不落盘（省配额），恢复时重算
 
       commitPeriodsInPlace(res.periods);
 
@@ -1787,7 +1824,7 @@ useEffect(() => {
 
     commitPeriodsInPlace(s.periods);
 
-    setSkuWeeks(s.skuWeeks); setSkuMetrics(s.skuMetrics);
+    setSkuWeeks(s.skuWeeks); setSkuMetrics(s.skuMetrics || genSkuMetrics(skuMaster, s.skuWeeks, s.periods)); // v3.8.2：落盘快照不含派生 skuMetrics 时现场重算
 
     setChannelWeekly(s.channelWeekly); setChannelSkuWeekly(s.channelSkuWeekly);
 
@@ -1906,7 +1943,7 @@ useEffect(() => {
             {!isReadOnly && (<button onClick={()=>setShowPassSetting(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Settings className="w-3.5 h-3.5"/>设置密码</button>)}
             {!isReadOnly && (<button onClick={exportData} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Download className="w-3.5 h-3.5"/>导出数据</button>)}
             {!isReadOnly && importUndo && (<button onClick={undoImport} title={importUndo.label} className="inline-flex items-center gap-1 text-rose-500 hover:text-rose-600 font-medium transition-colors"><RotateCcw className="w-3.5 h-3.5"/>撤销导入</button>)}
-            {saveError && (<span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-700">本地保存失败（未保存）</span>)}
+            {saveError && (<button onClick={()=>{ if(persistLocal()){alert('✅ 本地保存已恢复，草稿写入成功');}else{alert('❌ 仍然保存失败：浏览器本地存储空间不足。\n\n建议：先点「导出数据」备份 JSON，再在浏览器设置中清除本页站点数据，重新打开后「导入数据」恢复。');} }} title="点击重试本地保存" className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-700 hover:bg-rose-200 cursor-pointer transition-colors">本地保存失败（未保存）· 点击重试</button>)}
             {!isReadOnly && (<button onClick={()=>setShowGistSync(true)} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>Gist 同步</button>)}
             {!isReadOnly && (<input type="file" ref={importRef} accept=".json" className="hidden" onChange={e=>{if(e.target.files[0]) importData(e.target.files[0]); e.target.value='';}}/>)}
             {!isReadOnly && (<button onClick={()=>importRef.current && importRef.current.click()} className="inline-flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-medium transition-colors"><Upload className="w-3.5 h-3.5"/>导入数据</button>)}
