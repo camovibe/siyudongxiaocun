@@ -7035,7 +7035,7 @@ function computeSlowMoving({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, 
     skus.forEach(s => {
       if (!SLOW_SET.includes(s.status)) return;
       const sold = new Set(s.chList.map(x => x.ch));
-      s.opportunity = Object.entries(catVol[s.cat] || {}).sort((a,b) => b[1]-a[1]).map(([ch]) => ch).filter(ch => !sold.has(ch)).slice(0,3);
+      s.opportunity = Object.entries(catVol[s.cat] || {}).sort((a,b) => b[1]-a[1]).filter(([ch]) => !sold.has(ch)).slice(0,3).map(([ch, v]) => ({ ch, vol: v }));
     });
   }
   return { skus, cats, matrix, gaps, hasDetail };
@@ -7058,12 +7058,12 @@ function SlowMovingPanel({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, su
     .slice().sort((a,b) => (SLOW_META[a.status].rank - SLOW_META[b.status].rank) || ((b.excessValue||0) - (a.excessValue||0)));
   const orderOk = cfg.watch < cfg.slow && cfg.slow < cfg.severe;
   const exportCsv = () => {
-    const head = ['商品编码','名称','品类','状态','期末库存','近4周销量','前4周销量','销量变化%','可售月数','距上次动销(周)','有货率%','积压超额件数','积压货值(供价)','主力去化渠道','铺货机会渠道','建议'];
+    const head = ['商品编码','名称','品类','状态','期末库存','近4周销量','前4周销量','销量变化%','可售月数','距上次动销(周)','有货率%','积压超额件数','积压货值(供价)','主力去化渠道(近4周销量)','铺货机会渠道(品类近4周销量)','建议'];
     const lines = [head.join(',')];
     list.forEach(s => lines.push([s.code, s.name, s.cat, SLOW_META[s.status].label, s.end === null ? '' : Math.round(s.end), Math.round(s.recentSales), Math.round(s.prevSales),
       s.salesTrend === null ? '' : s.salesTrend.toFixed(1), s.months === null ? '' : (s.months === Infinity ? '∞' : s.months.toFixed(2)),
       s.weeksNoSale ?? '', s.inStockRate === null ? '' : (s.inStockRate*100).toFixed(0), s.excessQty, s.excessValue === null ? '' : s.excessValue.toFixed(2),
-      s.chList.slice(0,3).map(x => x.ch+'('+Math.round(x.vol)+')').join(' / '), s.opportunity.join(' / '), SLOW_META[s.status].advice].map(csvEscape).join(',')));
+      s.chList.slice(0,3).map(x => x.ch+'('+Math.round(x.vol)+')').join(' / '), s.opportunity.map(o => o.ch+'('+Math.round(o.vol)+')').join(' / '), SLOW_META[s.status].advice].map(csvEscape).join(',')));
     downloadFile('滞销与通货能力_' + new Date().toISOString().slice(0,10) + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
   };
   return (
@@ -7118,7 +7118,7 @@ function SlowMovingPanel({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, su
             {Object.entries(SLOW_META).map(([k,m]) => <option key={k} value={k}>{m.label}</option>)}
           </select>
           <input value={q} onChange={e => setQ(e.target.value)} className="flt" style={{maxWidth:'220px'}} placeholder="搜索 名称/编码/品类"/>
-          <span className="text-xs text-slate-400">{list.length} 条</span>
+          <span className="text-xs text-slate-400">{list.length} 条 · 主力去化/铺货机会括号内为近4周销量（件）</span>
         </div>
         <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-lg border border-slate-100">
           <table className="w-full text-sm">
@@ -7126,7 +7126,7 @@ function SlowMovingPanel({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, su
               <th className="px-3 py-2 text-left font-medium">商品</th><th className="px-3 py-2 text-left font-medium">状态</th><th className="px-3 py-2 text-right font-medium">期末库存</th>
               <th className="px-3 py-2 text-right font-medium">近4周销量</th><th className="px-3 py-2 text-right font-medium">vs前4周</th><th className="px-3 py-2 text-right font-medium">可售月数</th>
               <th className="px-3 py-2 text-right font-medium">距上次动销</th><th className="px-3 py-2 text-right font-medium">有货率</th><th className="px-3 py-2 text-right font-medium">积压件数</th>
-              <th className="px-3 py-2 text-right font-medium">积压货值</th><th className="px-3 py-2 text-left font-medium">主力去化渠道</th><th className="px-3 py-2 text-left font-medium">铺货机会</th><th className="px-3 py-2 text-left font-medium">建议</th>
+              <th className="px-3 py-2 text-right font-medium">积压货值</th><th className="px-3 py-2 text-left font-medium" title="近4周该SKU销量靠前的渠道（括号=该SKU近4周在该渠道的销量件数），滞销品优先往这些已验证能卖动的渠道加推">主力去化渠道</th><th className="px-3 py-2 text-left font-medium" title="该品类近4周动销靠前、但该SKU尚无动销的渠道（括号=该品类近4周在该渠道的销量件数），即同品类卖得动、这个品还没铺的渠道，适合补位铺货">铺货机会</th><th className="px-3 py-2 text-left font-medium">建议</th>
             </tr></thead>
             <tbody>{list.length === 0 ? <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">无匹配 SKU</td></tr> : list.map(s => (
               <tr key={s.code} className="border-t border-slate-50 hover:bg-slate-50 align-top">
@@ -7141,7 +7141,7 @@ function SlowMovingPanel({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, su
                 <td className="px-3 py-2 text-right tabular-nums">{s.excessQty ? fmtNum(s.excessQty) : '—'}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{s.excessQty && s.excessValue !== null ? '¥'+fmtMoney(s.excessValue) : '—'}</td>
                 <td className="px-3 py-2 text-xs text-slate-600">{!D.hasDetail ? '需渠道明细' : (s.chList.length ? s.chList.slice(0,3).map(x => `${x.ch}(${fmtNum(x.vol)})`).join('、') : <span className="text-red-500">近4周无渠道动销</span>)}</td>
-                <td className="px-3 py-2 text-xs text-indigo-600">{s.opportunity.length ? s.opportunity.join('、') : '—'}</td>
+                <td className="px-3 py-2 text-xs text-indigo-600" title="该品类近4周动销靠前但该SKU尚无动销的渠道（括号=品类近4周销量件数）">{s.opportunity.length ? s.opportunity.map(o => o.ch+'('+fmtNum(o.vol)+')').join('、') : '—'}</td>
                 <td className="px-3 py-2 text-xs text-slate-600 min-w-[180px]">{SLOW_META[s.status].advice}</td>
               </tr>))}</tbody>
           </table>
