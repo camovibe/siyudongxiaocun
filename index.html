@@ -10,6 +10,7 @@
 
 <title>兆丰渠道周转 · 全维看板</title>
 
+<!-- v3.11 新增（在 v3.10 之上，零口径改动）：① 利润监控页新增「渠道利润质量 · 沟通策略（分销商为主·品牌为辅）」面板：近4周/累计 分销商毛利率·净利率·净利额、净利率周环比与近4周vs前4周变化(pp)、分销商净利排名及排名变化、利润效率差、供价上调空间、价格指数、品牌毛利与利润分配比（辅）、四象限沟通策略与预警；有 SKU×渠道 明细按精确口径，否则按当周全渠道 SKU 结构估算并标注；② 机会洞察页新增「滞销与渠道通货能力」面板：SKU/品类滞销分级（阈值可调，新品保护）、积压超额件数（取整）与货值、品类渠道集中度、渠道×品类通货矩阵、渠道能力缺口、滞销 SKU 去化渠道与铺货机会；均支持 CSV 导出 -->
 <!-- v3.10 SKU 汇总表新增「有货率」列（在 v3.9 之上）：有货率 = 累计有货天数 ÷ 自首条有记录周以来的天数（分母不含未上市期），<60% 红（断货严重）/ <85% 黄 / 否则绿；区分「断货」与「动销不行」两类问题品 -->
 <!-- 历史 v3.9 月均周转改有货月口径（在 v3.8 之上）：月均 = 累计周转 ÷ 有货月数，有货周 = 期初>0 或入库>0，无记录周与零库存周不计入分母；有货不足 4 周显示「样本不足」不折算；累计周转原值不变 -->
 <!-- 历史 v3.8 周转率与质量卡体验升级（在 v3.7 数据可靠性之上）：① 滚动周转率改真·滚动4周窗口口径（近4周售出 ÷ 窗口期初期末近似平均库存），一处缺数据只影响前后4周断线、不再永久断线；SKU总览 Sparkline 同步切换；② 累计数量周转 KPI 保持原口径原数值，新增「≈月均 X 次」折算副文案；③ 数据质量卡支持逐项/整类忽略与恢复，忽略项随导出/Gist/本地草稿持久化同步，只读版只展示过滤后视图（无忽略按钮）；导入、ROI、对账等所有数值口径不变 -->
@@ -2237,6 +2238,7 @@ function Dashboard(){
 
 
         {tab==='insight' && <InsightView skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} isReadOnly={isReadOnly}/>}
+        {tab==='insight' && <SlowMovingPanel skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} skuMetrics={skuMetrics} channelSkuWeekly={channelSkuWeekly} supply={supply} isReadOnly={isReadOnly}/>}
 
 
 
@@ -2246,6 +2248,7 @@ function Dashboard(){
 
 
         {tab==='profit' && <ProfitView cost={cost} setCost={setCost} supply={supply} setSupply={setSupply} skuWeeks={skuWeeks} skuMaster={sortedSkuMaster} opRate={opRate} setOpRate={setOpRate} isReadOnly={isReadOnly} />}
+        {tab==='profit' && <ChannelProfitPanel channelWeekly={channelWeekly} channelSkuWeekly={channelSkuWeekly} skuMaster={sortedSkuMaster} skuWeeks={skuWeeks} cost={cost} supply={supply} opRate={opRate} isReadOnly={isReadOnly} />}
 
 
 
@@ -6681,6 +6684,494 @@ function DataQualityCard({ skuMaster, skuWeeks, channelWeekly, channelSkuWeekly,
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ================= v3.11 渠道利润质量 & 滞销通货分析（新增：纯计算 + 展示，不改既有口径） ================= */
+
+const CH_PROFIT_CFG = { recentWeeks: 4, priceIndexWarn: 0.9 };
+
+function medianOf(arr){
+  const a = (arr||[]).filter(v => Number.isFinite(v)).sort((x,y) => x-y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+
+/* 分销商为主：GMV × 分销商净利率 四象限；品牌毛利率（占供货额）作为谈判方向的辅助判断 */
+function channelStrategy(r, m){
+  const flags = [];
+  if (!r.recent) return { label:'近期无动销', tone:'mute', act:'确认是否停销/断货，评估是否重启合作', flags };
+  if (r.priceIndex !== null && r.priceIndex < CH_PROFIT_CFG.priceIndexWarn) flags.push('价格指数偏低（疑似深折扣/破价，压缩分销商利润）');
+  if (r.declWeeks >= 3) flags.push(`分销商净利率连续 ${r.declWeeks} 周下滑`);
+  if (r.net4v4 !== null && r.net4v4 <= -3) flags.push('近4周分销商净利率较前4周下降 ≥3pp');
+  if (r.rankChg !== null && r.rankChg <= -3) flags.push(`分销商净利排名下降 ${-r.rankChg} 位`);
+  if (r.recent.rBrandSupply !== null && r.recent.rBrandSupply < 0) flags.push('品牌侧毛利为负（供价低于成本）');
+  if (r.recent.rNet < 0) return { label:'分销商亏损·流失风险', tone:'bad', act:'优先止损沟通：核对供价/返利/控价，评估阶梯返利或活动补贴，防止渠道断供或乱价', flags };
+  const big = m.gmv !== null && r.recent.gmv >= m.gmv;
+  const rich = m.net !== null && r.recent.rNet >= m.net;
+  const brandRich = (m.brand === null || r.recent.rBrandSupply === null) ? null : r.recent.rBrandSupply >= m.brand;
+  if (big && rich) {
+    if (brandRich === false) return { label:'渠道利润厚·品牌薄', tone:'info', act:'分销商利润充裕：可谈供价上调或收紧返利，推高毛利SKU，保供保价', flags };
+    return { label:'核心共赢', tone:'good', act:'双方利润均健康：保供保价、联合规划大促，可谈提量与新品首发', flags };
+  }
+  if (big && !rich) {
+    if (brandRich === true) return { label:'规模薄利·品牌可让利', tone:'warn', act:'分销商利润薄、品牌有空间：用阶梯返利/活动补贴扶持渠道利润，守住控价', flags };
+    if (brandRich === false) return { label:'规模薄利·双方都薄', tone:'warn', act:'双方利润都薄：严控价格、引导结构迁移至高毛利SKU，避免价格战', flags };
+    return { label:'规模薄利', tone:'warn', act:'重点控价，用返利/赠品替代直接降价，引导高毛利SKU', flags };
+  }
+  if (!big && rich) return { label:'高利小体量', tone:'info', act:'分销商利润空间充足：推动扩品铺货、用活动资源换量', flags };
+  return { label:'双低待评估', tone:'mute', act:'复盘去留：收缩投入或重谈合作条件（起订量/供价/返利）', flags };
+}
+
+function computeChannelProfit({ channelWeekly, channelSkuWeekly, skuMaster, skuWeeks, cost, supply, opRate }){
+  const P = PERIODS, n = P.length, R = CH_PROFIT_CFG.recentWeeks;
+  const op = Math.min(90, Math.max(0, Number(opRate) || 0)) / 100;
+  const cw = Array.isArray(channelWeekly) ? channelWeekly : [];
+  const detail = channelSkuWeekly || {};
+  const priced = (skuMaster||[]).map(s => ({ code:s.code, sp:toMetricNumber(supply?.[s.code]), c:toMetricNumber(cost?.[s.code]) }))
+    .filter(x => x.sp !== null && x.c !== null);
+  const channels = [];
+  cw.forEach(r => Object.keys(r||{}).forEach(k => { if (k.startsWith('g_')) { const ch = k.slice(2); if (!channels.includes(ch)) channels.push(ch); } }));
+  const mix = P.map((_, i) => {
+    let q = 0, sp = 0, b = 0;
+    priced.forEach(x => { const s = toMetricNumber(skuWeeks?.[x.code]?.[i]?.sales); if (s !== null && s > 0) { q += s; sp += x.sp*s; b += (x.sp-x.c)*s; } });
+    return q > 0 ? { avgSp: sp/q, avgBrand: b/q } : null;
+  });
+  const calc = (ch, i) => {
+    const row = cw[i] || {};
+    const g = toMetricNumber(row['g_'+ch]), v = toMetricNumber(row['v_'+ch]);
+    if (g === null || g <= 0) return null;
+    let Gc = 0, Sc = 0, Bc = 0, exact = false;
+    priced.forEach(x => {
+      const cell = detail?.[x.code]?.[ch]?.[i];
+      if (cell && typeof cell === 'object') {
+        const q = toMetricNumber(cell.vol), gg = toMetricNumber(cell.gmv);
+        if (q !== null && gg !== null && q > 0) { exact = true; Gc += gg; Sc += x.sp*q; Bc += (x.sp-x.c)*q; }
+      }
+    });
+    if (!exact || Gc <= 0) {
+      exact = false;
+      const m = mix[i];
+      if (!m || v === null || v <= 0) return { gmv:g, vol:v, ok:false };
+      Gc = g; Sc = v*m.avgSp; Bc = v*m.avgBrand;
+    }
+    const rGross = (Gc-Sc)/Gc, rBrand = Bc/Gc;
+    return { gmv:g, vol:v, ok:true, exact, rGross, rNet:rGross-op, rBrand,
+      distGross:g*rGross, distNet:g*(rGross-op), brand:g*rBrand, supplyRev:g*(1-rGross) };
+  };
+  const agg = (ws) => {
+    const ok = ws.filter(w => w && w.ok);
+    const gmv = ok.reduce((t,w) => t+w.gmv, 0);
+    if (gmv <= 0) return null;
+    const dg = ok.reduce((t,w) => t+w.distGross, 0), dn = ok.reduce((t,w) => t+w.distNet, 0);
+    const b = ok.reduce((t,w) => t+w.brand, 0), sr = ok.reduce((t,w) => t+w.supplyRev, 0);
+    const vol = ok.reduce((t,w) => t+(w.vol||0), 0);
+    const pd = Math.max(0, dn), pb = Math.max(0, b);
+    return { gmv, vol, distGross:dg, distNet:dn, brand:b, supplyRev:sr,
+      rGross:dg/gmv, rNet:dn/gmv, rBrandSupply: sr>0 ? b/sr : null,
+      supplyRoom: sr>0 ? dn/sr : null,
+      distSplit: (pd+pb) > 0 ? pd/(pd+pb) : null,
+      price: vol>0 ? gmv/vol : null, exactWeeks: ok.filter(w => w.exact).length, weeks: ok.length };
+  };
+  const win = (from, to) => { const out = []; for (let i = Math.max(0, from); i <= to && i < n; i++) out.push(i); return out; };
+  const recentIdx = win(n-R, n-1), prevIdx = win(n-2*R, n-R-1);
+  const mktPrice = (idxs) => { let g = 0, v = 0; idxs.forEach(i => channels.forEach(ch => { const gg = toMetricNumber(cw[i]?.['g_'+ch]), vv = toMetricNumber(cw[i]?.['v_'+ch]); if (gg !== null) g += gg; if (vv !== null) v += vv; })); return v > 0 ? g/v : null; };
+  const mktRecent = mktPrice(recentIdx);
+  const rows = channels.map(ch => {
+    const weeks = P.map((_, i) => calc(ch, i));
+    const cur = weeks[n-1], prev = n > 1 ? weeks[n-2] : null;
+    const recent = agg(recentIdx.map(i => weeks[i])), prior = agg(prevIdx.map(i => weeks[i])), cum = agg(weeks);
+    let decl = 0;
+    for (let i = n-1; i > 0; i--) { const a = weeks[i], b = weeks[i-1]; if (a && a.ok && b && b.ok && a.rNet < b.rNet - 1e-9) decl++; else break; }
+    return { ch, weeks, cur, prev, recent, prior, cum,
+      netWoW: (cur && cur.ok && prev && prev.ok) ? (cur.rNet-prev.rNet)*100 : null,
+      net4v4: (recent && prior) ? (recent.rNet-prior.rNet)*100 : null,
+      priceIndex: (recent && recent.price && mktRecent) ? recent.price/mktRecent : null,
+      declWeeks: decl,
+      exactShare: recent ? recent.exactWeeks/Math.max(1, recent.weeks) : 0,
+      spark: weeks.map(w => ({ v: (w && w.ok) ? +(w.rNet*100).toFixed(2) : null })) };
+  }).filter(r => r.cum);
+  const totCumDist = rows.reduce((t,r) => t+Math.max(0, r.cum.distNet), 0);
+  const totCumBrand = rows.reduce((t,r) => t+Math.max(0, r.cum.brand), 0);
+  const totCumGmv = rows.reduce((t,r) => t+r.cum.gmv, 0);
+  const totRecentGmv = rows.reduce((t,r) => t+(r.recent ? r.recent.gmv : 0), 0);
+  rows.forEach(r => {
+    r.gmvShare = totCumGmv > 0 ? r.cum.gmv/totCumGmv*100 : null;
+    r.distShare = totCumDist > 0 ? r.cum.distNet/totCumDist*100 : null;
+    r.brandShare = totCumBrand > 0 ? r.cum.brand/totCumBrand*100 : null;
+    r.efficiency = (r.gmvShare !== null && r.distShare !== null) ? r.distShare - r.gmvShare : null;
+    r.recentGmvShare = (totRecentGmv > 0 && r.recent) ? r.recent.gmv/totRecentGmv*100 : null;
+  });
+  const rankBy = (key, getter) => { rows.filter(r => getter(r) !== null).sort((a,b) => getter(b)-getter(a)).forEach((r,i) => { r[key] = i+1; }); };
+  rankBy('rankDist', r => r.recent ? r.recent.distNet : null);
+  rankBy('rankDistPrev', r => r.prior ? r.prior.distNet : null);
+  rankBy('rankNet', r => r.recent ? r.recent.rNet : null);
+  rankBy('rankBrand', r => r.recent ? r.recent.brand : null);
+  rows.forEach(r => { r.rankChg = (r.rankDist && r.rankDistPrev) ? r.rankDistPrev - r.rankDist : null; });
+  const active = rows.filter(r => r.recent);
+  const m = { gmv: medianOf(active.map(r => r.recent.gmv)), net: medianOf(active.map(r => r.recent.rNet)), brand: medianOf(active.map(r => r.recent.rBrandSupply)) };
+  rows.forEach(r => { r.strategy = channelStrategy(r, m); });
+  return { rows, mktRecent, opRatePct: +(op*100).toFixed(1), anyExact: rows.some(r => r.exactShare > 0), medians: m };
+}
+
+function ChannelProfitPanel({ channelWeekly, channelSkuWeekly, skuMaster, skuWeeks, cost, supply, opRate, isReadOnly }){
+  const [sortKey, setSortKey] = useState('rankDist');
+  const [q, setQ] = useState('');
+  const W = CH_PROFIT_CFG.recentWeeks;
+  const R = useMemo(() => computeChannelProfit({ channelWeekly, channelSkuWeekly, skuMaster, skuWeeks, cost, supply, opRate }),
+    [channelWeekly, channelSkuWeekly, skuMaster, skuWeeks, cost, supply, opRate]);
+  const sorters = {
+    rankDist: (a,b) => (a.rankDist||999) - (b.rankDist||999),
+    rankNet: (a,b) => (a.rankNet||999) - (b.rankNet||999),
+    net4v4: (a,b) => (a.net4v4 ?? 999) - (b.net4v4 ?? 999),
+    efficiency: (a,b) => (b.efficiency ?? -999) - (a.efficiency ?? -999),
+    supplyRoom: (a,b) => (b.recent?.supplyRoom ?? -999) - (a.recent?.supplyRoom ?? -999),
+    rankBrand: (a,b) => (a.rankBrand||999) - (b.rankBrand||999),
+  };
+  const list = R.rows.filter(r => !q || r.ch.includes(q)).slice().sort(sorters[sortKey] || sorters.rankDist);
+  const tot = R.rows.reduce((t,r) => { if (r.recent) { t.gmv += r.recent.gmv; t.brand += r.recent.brand; t.net += r.recent.distNet; t.gross += r.recent.distGross; } return t; }, { gmv:0, brand:0, net:0, gross:0 });
+  const lossCnt = R.rows.filter(r => r.recent && r.recent.rNet < 0).length;
+  const declCnt = R.rows.filter(r => r.net4v4 !== null && r.net4v4 < 0).length;
+  const estCnt = R.rows.filter(r => r.recent && r.exactShare < 1).length;
+  const pp = v => (v === null || v === undefined || !Number.isFinite(v)) ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + 'pp';
+  const pc = v => (v === null || v === undefined || !Number.isFinite(v)) ? '—' : (v*100).toFixed(1) + '%';
+  const chgColor = v => (v === null || v === undefined) ? '#94a3b8' : v < 0 ? '#dc2626' : '#16a34a';
+  const exportCsv = () => {
+    const head = ['分销商净利排名','排名变化','渠道','口径',`近${W}周GMV`,`近${W}周销量`,'分销商毛利率%','分销商净利率%','净利率周环比pp',`近${W}周vs前${W}周pp`,`近${W}周分销商净利`,'累计分销商净利','分销商净利占比%','GMV占比%','利润效率差pp','供价上调空间%','价格指数',`近${W}周品牌毛利(辅)`,'品牌毛利率(占供货额)%(辅)','分销商利润分配比%','策略','建议','预警'];
+    const f2 = v => (v === null || v === undefined || !Number.isFinite(v)) ? '' : v.toFixed(2);
+    const lines = [head.join(',')];
+    list.forEach(r => {
+      const rc = r.recent;
+      lines.push([r.rankDist||'', r.rankChg ?? '', r.ch, rc && r.exactShare >= 1 ? '精确' : '估算',
+        rc ? f2(rc.gmv) : '', rc ? Math.round(rc.vol) : '',
+        rc ? f2(rc.rGross*100) : '', rc ? f2(rc.rNet*100) : '', f2(r.netWoW), f2(r.net4v4),
+        rc ? f2(rc.distNet) : '', f2(r.cum.distNet), f2(r.distShare), f2(r.gmvShare), f2(r.efficiency),
+        rc && rc.supplyRoom !== null ? f2(rc.supplyRoom*100) : '', f2(r.priceIndex),
+        rc ? f2(rc.brand) : '', rc && rc.rBrandSupply !== null ? f2(rc.rBrandSupply*100) : '',
+        rc && rc.distSplit !== null ? f2(rc.distSplit*100) : '',
+        r.strategy.label, r.strategy.act, r.strategy.flags.join('；')].map(csvEscape).join(','));
+    });
+    downloadFile('渠道利润质量_分销商视角_' + new Date().toISOString().slice(0,10) + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
+  };
+  return (
+    <div className="rounded-2xl border-2 border-amber-200 bg-amber-50/30 p-4 space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-block w-1.5 h-5 rounded-full bg-amber-500"/>
+        <h2 className="text-base font-bold text-amber-800">渠道利润质量 · 沟通策略（分销商为主 · 品牌为辅）</h2>
+        <span className="text-xs text-amber-600">近{W}周口径 · 分销商净利扣运营成本率 {R.opRatePct}% · {R.anyExact ? '有 SKU×渠道 明细的周按精确口径，其余估算' : '无 SKU×渠道 明细，按当周全渠道 SKU 结构估算'}</span>
+        <div className="flex-1"/>
+        <input value={q} onChange={e => setQ(e.target.value)} className="flt" style={{maxWidth:'160px'}} placeholder="筛选渠道"/>
+        <select value={sortKey} onChange={e => setSortKey(e.target.value)} className="border border-slate-200 rounded-md px-2 py-1 text-xs bg-white">
+          <option value="rankDist">按分销商净利额排名</option>
+          <option value="rankNet">按分销商净利率排名</option>
+          <option value="net4v4">按净利率下滑幅度</option>
+          <option value="efficiency">按利润效率差</option>
+          <option value="supplyRoom">按供价上调空间</option>
+          <option value="rankBrand">按品牌毛利（辅）</option>
+        </select>
+        {!isReadOnly && <button onClick={exportCsv} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"><Download className="w-3.5 h-3.5"/>导出 CSV</button>}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Kpi icon={<Store className="w-5 h-5"/>} tint="#ea580c" label={`近${W}周分销商净利（全渠道）`} value={'¥'+fmtMoney(tot.net)} sub={`净利率 ${tot.gmv > 0 ? (tot.net/tot.gmv*100).toFixed(1)+'%' : '—'} · 毛利 ¥${fmtMoney(tot.gross)}`}/>
+        <Kpi icon={<AlertTriangle className="w-5 h-5"/>} tint="#dc2626" label="分销商亏损渠道" value={lossCnt+' 个'} sub={`净利率较前${W}周下滑 ${declCnt} 个`}/>
+        <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#94a3b8" label={`近${W}周品牌毛利（辅）`} value={'¥'+fmtMoney(tot.brand)} sub={`终端GMV ¥${fmtMoney(tot.gmv)}`}/>
+        <Kpi icon={<TrendingDown className="w-5 h-5"/>} tint="#64748b" label="估算口径渠道" value={estCnt+' 个'} sub="上传矩阵格式渠道数据（含商品编码）可转精确口径"/>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-amber-50 text-amber-800 border-b border-amber-100">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium whitespace-nowrap">净利排名</th>
+              <th className="px-3 py-2 text-left font-medium">渠道</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">近{W}周GMV/占比</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">分销商毛利率</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">分销商净利率</th>
+              <th className="px-3 py-2 text-left font-medium whitespace-nowrap">净利率趋势</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">周环比</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">近{W}vs前{W}周</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">近{W}周分销商净利</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">累计分销商净利/占比</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap" title="分销商净利占比 − GMV占比；为正 = 该渠道每元GMV赚得比平均多">利润效率差</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap" title="分销商净利 ÷ 我方供货额：在当前运营成本率下供价最多还能上调的比例；为负 = 需让利">供价上调空间</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap" title="渠道近期成交均价 ÷ 全渠道成交均价；<0.9 疑似深折扣/破价">价格指数</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap text-slate-400" title="品牌毛利额；括号内为品牌毛利 ÷ 供货额">品牌毛利（辅）</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap text-slate-400" title="分销商净利 ÷ (分销商净利 + 品牌毛利)，负值按 0 计">分销商分配比（辅）</th>
+              <th className="px-3 py-2 text-left font-medium">沟通策略 / 预警</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.length === 0 ? <tr><td colSpan={16} className="px-4 py-8 text-center text-slate-400">暂无渠道数据</td></tr> : list.map(r => (
+              <tr key={r.ch} className="border-t border-slate-100 hover:bg-amber-50/40 align-top">
+                <td className="px-3 py-2 tabular-nums text-slate-600 whitespace-nowrap">{r.rankDist || '—'}{r.rankChg !== null && r.rankChg !== 0 && <span className={`ml-1 text-xs ${r.rankChg > 0 ? 'text-green-600' : 'text-red-500'}`}>{r.rankChg > 0 ? '↑' : '↓'}{Math.abs(r.rankChg)}</span>}</td>
+                <td className="px-3 py-2"><div className="font-medium text-slate-700 whitespace-nowrap">{r.ch}</div><div className="text-xs text-slate-400">{r.recent && r.exactShare >= 1 ? '精确' : '估算'}</div></td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.recent ? '¥'+fmtMoney(r.recent.gmv) : '—'}<div className="text-xs text-slate-400">{r.recentGmvShare === null ? '' : r.recentGmvShare.toFixed(1)+'%'}</div></td>
+                <td className="px-3 py-2 text-right tabular-nums">{pc(r.recent?.rGross)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color: r.recent ? (r.recent.rNet < 0 ? '#dc2626' : '#16a34a') : '#94a3b8'}}>{pc(r.recent?.rNet)}</td>
+                <td className="px-3 py-2"><Sparkline data={r.spark} dataKey="v" color="#ea580c" valueFormatter={v => v.toFixed(1)+'%'}/></td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: chgColor(r.netWoW)}}>{pp(r.netWoW)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: chgColor(r.net4v4)}}>{pp(r.net4v4)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color: r.recent && r.recent.distNet < 0 ? '#dc2626' : '#334155'}}>{r.recent ? '¥'+fmtMoney(r.recent.distNet) : '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(r.cum.distNet)}<div className="text-xs text-slate-400">{r.distShare === null ? '' : '占 '+r.distShare.toFixed(1)+'%'}</div></td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: chgColor(r.efficiency)}}>{pp(r.efficiency)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: chgColor(r.recent?.supplyRoom ?? null)}}>{r.recent && r.recent.supplyRoom !== null ? (r.recent.supplyRoom > 0 ? '+' : '')+(r.recent.supplyRoom*100).toFixed(1)+'%' : '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: r.priceIndex !== null && r.priceIndex < CH_PROFIT_CFG.priceIndexWarn ? '#dc2626' : '#475569'}}>{r.priceIndex === null ? '—' : r.priceIndex.toFixed(2)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-400">{r.recent ? '¥'+fmtMoney(r.recent.brand) : '—'}<div className="text-xs">{r.recent && r.recent.rBrandSupply !== null ? '('+(r.recent.rBrandSupply*100).toFixed(1)+'%)' : ''}</div></td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-400">{r.recent && r.recent.distSplit !== null ? (r.recent.distSplit*100).toFixed(0)+'%' : '—'}</td>
+                <td className="px-3 py-2 min-w-[220px]"><Chip tone={r.strategy.tone}>{r.strategy.label}</Chip><div className="text-xs text-slate-500 mt-1">{r.strategy.act}</div>{r.strategy.flags.map((f,i) => <div key={i} className="text-xs text-red-500 mt-0.5">⚠ {f}</div>)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-slate-400 leading-relaxed">口径：分销商毛利 = 终端GMV − 我方供货额；分销商净利 = 终端GMV×(1−运营成本率) − 供货额；供价上调空间 = 分销商净利 ÷ 供货额（与「对方利润」区「可提价空间」同口径）；品牌毛利 = (供货价−成本)×件数，仅作辅助参考。四象限以近{W}周 GMV 中位数 × 分销商净利率中位数划分，品牌毛利率中位数用于细分谈判方向。估算口径下，渠道间利润差异主要来自各自成交均价；只计入成本与供价齐全的 SKU。</p>
+    </div>
+  );
+}
+
+const SLOW_DEFAULT = { watch: 1.8, slow: 2.5, severe: 4, newWeeks: 6 };
+const SLOW_SET = ['dead', 'severe', 'slow'];
+const SLOW_META = {
+  dead:    { label:'零动销积压', tone:'bad',  rank:0, advice:'停止补货；启动清仓/组合装/转渠道去化' },
+  severe:  { label:'严重滞销',   tone:'bad',  rank:1, advice:'停补货；定向渠道专项活动去化，评估清仓机制' },
+  slow:    { label:'滞销',       tone:'warn', rank:2, advice:'暂停补货；向主力去化渠道加推，向铺货机会渠道铺货' },
+  watch:   { label:'关注',       tone:'info', rank:3, advice:'控制补货节奏，观察动销趋势' },
+  healthy: { label:'健康',       tone:'good', rank:4, advice:'正常补货' },
+  short:   { label:'断货',       tone:'warn', rank:5, advice:'有动销但库存为0，按动销补货' },
+  newItem: { label:'新品观察',   tone:'mute', rank:6, advice:'上市未满观察期，暂不判滞销，关注铺货与爬坡' },
+  empty:   { label:'无库存无动销', tone:'mute', rank:7, advice:'—' },
+};
+
+function computeSlowMoving({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, supply, cfg }){
+  const n = PERIODS.length, R = 4;
+  const has = v => typeof v === 'number' && Number.isFinite(v);
+  const recentIdx = [], prevIdx = [];
+  for (let i = Math.max(0, n-R); i < n; i++) recentIdx.push(i);
+  for (let i = Math.max(0, n-2*R); i < n-R; i++) prevIdx.push(i);
+  const detail = channelSkuWeekly || {};
+  const channels = [];
+  Object.values(detail).forEach(chs => Object.keys(chs||{}).forEach(ch => { if (!channels.includes(ch)) channels.push(ch); }));
+  const hasDetail = channels.length > 0;
+  const chVol = (code, ch, idxs) => idxs.reduce((t,i) => { const c = detail?.[code]?.[ch]?.[i]; const q = (c && typeof c === 'object') ? toMetricNumber(c.vol) : null; return t + (q !== null ? q : 0); }, 0);
+  const skus = (skuMaster||[]).map(s => {
+    const ser = skuWeeks?.[s.code] || [];
+    const last = ser[n-1] || {};
+    const end = has(last.end) ? last.end : null;
+    const sumSales = idxs => { let t = 0, obs = 0; idxs.forEach(i => { const v = ser[i]?.sales; if (has(v)) { t += v; obs++; } }); return { t, obs }; };
+    const rs = sumSales(recentIdx), ps = sumSales(prevIdx);
+    const daily = rs.obs > 0 ? rs.t/(rs.obs*7) : null;
+    let firstIdx = -1;
+    for (let i = 0; i < n; i++) { const w = ser[i] || {}; if ((has(w.begin) && w.begin > 0) || (has(w.inbound) && w.inbound > 0) || (has(w.sales) && w.sales > 0)) { firstIdx = i; break; } }
+    let lastSaleIdx = -1;
+    for (let i = n-1; i >= 0; i--) { if (has(ser[i]?.sales) && ser[i].sales > 0) { lastSaleIdx = i; break; } }
+    const months = end === null ? null : (daily > 0 ? end/(daily*30) : (end > 0 ? Infinity : 0));
+    const isNew = firstIdx >= 0 && (n - firstIdx) <= cfg.newWeeks;
+    let status;
+    if (end === null) status = 'empty';
+    else if (end <= 0) status = rs.t > 0 ? 'short' : 'empty';
+    else if (isNew && months > cfg.watch) status = 'newItem';
+    else if (rs.t <= 0) status = 'dead';
+    else if (months > cfg.severe) status = 'severe';
+    else if (months > cfg.slow) status = 'slow';
+    else if (months > cfg.watch) status = 'watch';
+    else status = 'healthy';
+    const sp = toMetricNumber(supply?.[s.code]);
+    const excessQty = (end !== null && end > 0 && SLOW_SET.includes(status)) ? Math.max(0, Math.round(end - (daily||0)*30*cfg.watch)) : 0;
+    const m = (skuMetrics?.[s.code] || [])[n-1] || {};
+    const chList = hasDetail ? channels.map(ch => ({ ch, vol: chVol(s.code, ch, recentIdx) })).filter(x => x.vol > 0).sort((a,b) => b.vol-a.vol) : [];
+    return { code:s.code, name:s.name, cat:s.cat, end, recentSales:rs.t, prevSales:ps.t,
+      salesTrend: ps.t > 0 ? (rs.t-ps.t)/ps.t*100 : null, daily, months, status, isNew,
+      weeksNoSale: lastSaleIdx < 0 ? null : n-1-lastSaleIdx, sp,
+      stockValue: (end !== null && end > 0 && sp !== null) ? end*sp : null,
+      excessQty, excessValue: sp !== null ? excessQty*sp : null,
+      inStockRate: toMetricNumber(m.inStockRate), chList, opportunity: [] };
+  });
+  const catKeys = CATS.map(c => c.key);
+  skus.forEach(s => { if (!catKeys.includes(s.cat)) catKeys.push(s.cat); });
+  const cats = catKeys.map(cat => {
+    const list = skus.filter(s => s.cat === cat);
+    if (!list.length) return null;
+    const end = list.reduce((t,s) => t + (s.end > 0 ? s.end : 0), 0);
+    const daily = list.reduce((t,s) => t + (s.daily || 0), 0);
+    const slowList = list.filter(s => SLOW_SET.includes(s.status));
+    const excessQty = slowList.reduce((t,s) => t + s.excessQty, 0);
+    const excessValue = slowList.reduce((t,s) => t + (s.excessValue || 0), 0);
+    const stockValue = list.reduce((t,s) => t + (s.stockValue || 0), 0);
+    let chCount = null, top1 = null, top1Share = null;
+    if (hasDetail) {
+      const vols = channels.map(ch => ({ ch, vol: list.reduce((t,s) => t + chVol(s.code, ch, recentIdx), 0) })).filter(x => x.vol > 0).sort((a,b) => b.vol-a.vol);
+      const tot = vols.reduce((t,x) => t + x.vol, 0);
+      chCount = vols.length;
+      if (vols.length) { top1 = vols[0].ch; top1Share = tot > 0 ? vols[0].vol/tot : null; }
+    }
+    const months = daily > 0 ? end/(daily*30) : (end > 0 ? Infinity : 0);
+    const slowValueShare = stockValue > 0 ? excessValue/stockValue : null;
+    const notes = [];
+    if (slowValueShare !== null && slowValueShare > 0.3) notes.push('积压重：暂停品类补货，集中去化');
+    if (top1Share !== null && top1Share > 0.6) notes.push(`渠道过度集中（${top1} ${Math.round(top1Share*100)}%）：拓展第二渠道`);
+    if (chCount !== null && chCount <= 2 && end > 0) notes.push('动销渠道少：品类通货能力不足');
+    if (months > cfg.slow) notes.push('整体周转慢');
+    if (!notes.length) notes.push('健康');
+    return { cat, color: CAT_COLOR[cat] || '#64748b', skuCount: list.length, slowCount: slowList.length,
+      deadCount: list.filter(s => s.status === 'dead').length, end, months, excessQty, excessValue, stockValue,
+      slowValueShare, chCount, top1, top1Share, notes };
+  }).filter(Boolean);
+  let matrix = null; const gaps = [];
+  if (hasDetail) {
+    const catVol = {}, chTot = {}; let grand = 0;
+    channels.forEach(ch => { chTot[ch] = 0; });
+    cats.forEach(c => { catVol[c.cat] = {}; });
+    skus.forEach(s => channels.forEach(ch => { const v = chVol(s.code, ch, recentIdx); if (v > 0) { catVol[s.cat][ch] = (catVol[s.cat][ch] || 0) + v; chTot[ch] += v; grand += v; } }));
+    const activeCh = channels.filter(ch => chTot[ch] > 0).sort((a,b) => chTot[b]-chTot[a]);
+    const catTot = c => Object.values(catVol[c] || {}).reduce((t,v) => t+v, 0);
+    matrix = { channels: activeCh, rows: cats.map(c => { const tot = catTot(c.cat); return { cat:c.cat, color:c.color, total:tot, cells: activeCh.map(ch => ({ ch, vol: catVol[c.cat][ch] || 0, share: tot > 0 ? (catVol[c.cat][ch] || 0)/tot : 0 })) }; }) };
+    activeCh.forEach(ch => {
+      const chShare = grand > 0 ? chTot[ch]/grand : 0;
+      if (chShare < 0.03) return;
+      cats.forEach(c => { const tot = catTot(c.cat); if (tot <= 0) return; const sh = (catVol[c.cat][ch] || 0)/tot; if (sh < chShare*0.3) gaps.push({ ch, cat:c.cat, chShare, catShare: sh }); });
+    });
+    gaps.sort((a,b) => b.chShare - a.chShare);
+    skus.forEach(s => {
+      if (!SLOW_SET.includes(s.status)) return;
+      const sold = new Set(s.chList.map(x => x.ch));
+      s.opportunity = Object.entries(catVol[s.cat] || {}).sort((a,b) => b[1]-a[1]).map(([ch]) => ch).filter(ch => !sold.has(ch)).slice(0,3);
+    });
+  }
+  return { skus, cats, matrix, gaps, hasDetail };
+}
+
+function SlowMovingPanel({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, supply, isReadOnly }){
+  const [cfg, setCfg] = useState(SLOW_DEFAULT);
+  const [flt, setFlt] = useState('slowAll');
+  const [q, setQ] = useState('');
+  const D = useMemo(() => computeSlowMoving({ skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, supply, cfg }),
+    [skuMaster, skuWeeks, skuMetrics, channelSkuWeekly, supply, cfg]);
+  const setNum = (k, v) => { const x = Number(v); if (Number.isFinite(x) && x > 0) setCfg(p => ({ ...p, [k]: x })); };
+  const fm = v => (v === null || v === undefined) ? '—' : (v === Infinity ? '∞' : v.toFixed(1));
+  const slowSkus = D.skus.filter(s => SLOW_SET.includes(s.status));
+  const kExcessQty = slowSkus.reduce((t,s) => t + s.excessQty, 0);
+  const kExcessVal = slowSkus.reduce((t,s) => t + (s.excessValue || 0), 0);
+  const kDead = D.skus.filter(s => s.status === 'dead').length;
+  const list = D.skus.filter(s => (flt === 'all' ? true : flt === 'slowAll' ? SLOW_SET.includes(s.status) : s.status === flt))
+    .filter(s => !q || s.name.includes(q) || String(s.code).includes(q) || s.cat.includes(q))
+    .slice().sort((a,b) => (SLOW_META[a.status].rank - SLOW_META[b.status].rank) || ((b.excessValue||0) - (a.excessValue||0)));
+  const orderOk = cfg.watch < cfg.slow && cfg.slow < cfg.severe;
+  const exportCsv = () => {
+    const head = ['商品编码','名称','品类','状态','期末库存','近4周销量','前4周销量','销量变化%','可售月数','距上次动销(周)','有货率%','积压超额件数','积压货值(供价)','主力去化渠道','铺货机会渠道','建议'];
+    const lines = [head.join(',')];
+    list.forEach(s => lines.push([s.code, s.name, s.cat, SLOW_META[s.status].label, s.end === null ? '' : Math.round(s.end), Math.round(s.recentSales), Math.round(s.prevSales),
+      s.salesTrend === null ? '' : s.salesTrend.toFixed(1), s.months === null ? '' : (s.months === Infinity ? '∞' : s.months.toFixed(2)),
+      s.weeksNoSale ?? '', s.inStockRate === null ? '' : (s.inStockRate*100).toFixed(0), s.excessQty, s.excessValue === null ? '' : s.excessValue.toFixed(2),
+      s.chList.slice(0,3).map(x => x.ch+'('+Math.round(x.vol)+')').join(' / '), s.opportunity.join(' / '), SLOW_META[s.status].advice].map(csvEscape).join(',')));
+    downloadFile('滞销与通货能力_' + new Date().toISOString().slice(0,10) + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
+  };
+  return (
+    <div className="space-y-5">
+      <Card title="⑥ 滞销汇总与渠道通货能力（全渠道口径）" subtitle="可售月数 = 期末库存 ÷ (近4周日均销量×30)；零动销 = 有库存但近4周销量为0；上市未满观察期的新品不判滞销；积压超额件数 = 期末库存 − 关注线对应库存（取整）"
+        action={!isReadOnly && <button onClick={exportCsv} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50"><Download className="w-3.5 h-3.5"/>导出 CSV</button>}>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mb-3">
+          <span className="font-medium">分级阈值（月）</span>
+          <label className="flex items-center gap-1">关注 &gt;<input type="number" step="0.1" value={cfg.watch} onChange={e => setNum('watch', e.target.value)} className="w-16 text-right border border-slate-200 rounded px-1 py-0.5"/></label>
+          <label className="flex items-center gap-1">滞销 &gt;<input type="number" step="0.1" value={cfg.slow} onChange={e => setNum('slow', e.target.value)} className="w-16 text-right border border-slate-200 rounded px-1 py-0.5"/></label>
+          <label className="flex items-center gap-1">严重 &gt;<input type="number" step="0.1" value={cfg.severe} onChange={e => setNum('severe', e.target.value)} className="w-16 text-right border border-slate-200 rounded px-1 py-0.5"/></label>
+          <label className="flex items-center gap-1">新品观察期（周）<input type="number" step="1" value={cfg.newWeeks} onChange={e => setNum('newWeeks', e.target.value)} className="w-14 text-right border border-slate-200 rounded px-1 py-0.5"/></label>
+          <button onClick={() => setCfg(SLOW_DEFAULT)} className="text-indigo-600 underline">恢复默认</button>
+          {!orderOk && <span className="text-red-500">⚠ 阈值需满足 关注 &lt; 滞销 &lt; 严重</span>}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <Kpi icon={<PackageSearch className="w-5 h-5"/>} tint="#dc2626" label="滞销 SKU（含零动销）" value={slowSkus.length+' 个'} sub={`占 ${D.skus.length} 个 SKU`}/>
+          <Kpi icon={<Boxes className="w-5 h-5"/>} tint="#ea580c" label="积压超额件数" value={fmtNum(kExcessQty)+' 件'}/>
+          <Kpi icon={<CircleDollarSign className="w-5 h-5"/>} tint="#ca8a04" label="积压货值（供价口径）" value={'¥'+fmtMoney(kExcessVal)}/>
+          <Kpi icon={<AlertTriangle className="w-5 h-5"/>} tint="#7c3aed" label="零动销积压 SKU" value={kDead+' 个'}/>
+        </div>
+        <h4 className="text-sm font-medium text-slate-600 mb-2">品类汇总</h4>
+        <div className="overflow-x-auto mb-4">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500"><tr>
+              <th className="px-3 py-2 text-left font-medium">品类</th><th className="px-3 py-2 text-right font-medium">SKU</th><th className="px-3 py-2 text-right font-medium">滞销/零动销</th>
+              <th className="px-3 py-2 text-right font-medium">期末库存</th><th className="px-3 py-2 text-right font-medium">可售月数</th><th className="px-3 py-2 text-right font-medium">积压件数</th>
+              <th className="px-3 py-2 text-right font-medium">积压货值</th><th className="px-3 py-2 text-right font-medium">积压占库存货值</th>
+              <th className="px-3 py-2 text-right font-medium">动销渠道数</th><th className="px-3 py-2 text-left font-medium">第一渠道</th><th className="px-3 py-2 text-left font-medium">结论</th>
+            </tr></thead>
+            <tbody>{D.cats.map(c => (
+              <tr key={c.cat} className="border-t border-slate-100 align-top">
+                <td className="px-3 py-2 whitespace-nowrap"><span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{background:c.color}}/>{c.cat}</span></td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.skuCount}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.slowCount} / {c.deadCount}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtNum(c.end)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: c.months > cfg.slow ? '#dc2626' : '#475569'}}>{fm(c.months)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtNum(c.excessQty)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">¥{fmtMoney(c.excessValue)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.slowValueShare === null ? '—' : (c.slowValueShare*100).toFixed(1)+'%'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.chCount === null ? '—' : c.chCount}</td>
+                <td className="px-3 py-2 text-xs text-slate-600 whitespace-nowrap">{c.top1 ? `${c.top1} ${Math.round((c.top1Share||0)*100)}%` : '—'}</td>
+                <td className="px-3 py-2 text-xs text-slate-600">{c.notes.join('；')}</td>
+              </tr>))}</tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h4 className="text-sm font-medium text-slate-600">SKU 明细</h4>
+          <select value={flt} onChange={e => setFlt(e.target.value)} className="border border-slate-200 rounded-md px-2 py-1 text-xs">
+            <option value="slowAll">仅滞销（零动销+严重+滞销）</option>
+            <option value="all">全部</option>
+            {Object.entries(SLOW_META).map(([k,m]) => <option key={k} value={k}>{m.label}</option>)}
+          </select>
+          <input value={q} onChange={e => setQ(e.target.value)} className="flt" style={{maxWidth:'220px'}} placeholder="搜索 名称/编码/品类"/>
+          <span className="text-xs text-slate-400">{list.length} 条</span>
+        </div>
+        <div className="overflow-x-auto max-h-[480px] overflow-y-auto rounded-lg border border-slate-100">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500 sticky top-0"><tr>
+              <th className="px-3 py-2 text-left font-medium">商品</th><th className="px-3 py-2 text-left font-medium">状态</th><th className="px-3 py-2 text-right font-medium">期末库存</th>
+              <th className="px-3 py-2 text-right font-medium">近4周销量</th><th className="px-3 py-2 text-right font-medium">vs前4周</th><th className="px-3 py-2 text-right font-medium">可售月数</th>
+              <th className="px-3 py-2 text-right font-medium">距上次动销</th><th className="px-3 py-2 text-right font-medium">有货率</th><th className="px-3 py-2 text-right font-medium">积压件数</th>
+              <th className="px-3 py-2 text-right font-medium">积压货值</th><th className="px-3 py-2 text-left font-medium">主力去化渠道</th><th className="px-3 py-2 text-left font-medium">铺货机会</th><th className="px-3 py-2 text-left font-medium">建议</th>
+            </tr></thead>
+            <tbody>{list.length === 0 ? <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">无匹配 SKU</td></tr> : list.map(s => (
+              <tr key={s.code} className="border-t border-slate-50 hover:bg-slate-50 align-top">
+                <td className="px-3 py-2"><div className="font-medium text-slate-700">{s.name}</div><div className="text-xs text-slate-400">{s.code} · {s.cat}</div></td>
+                <td className="px-3 py-2 whitespace-nowrap"><Chip tone={SLOW_META[s.status].tone}>{SLOW_META[s.status].label}</Chip></td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtNum(s.end)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtNum(s.recentSales)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{color: s.salesTrend === null ? '#94a3b8' : s.salesTrend < 0 ? '#dc2626' : '#16a34a'}}>{s.salesTrend === null ? '—' : (s.salesTrend > 0 ? '+' : '')+s.salesTrend.toFixed(0)+'%'}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{color: s.months !== null && s.months > cfg.slow ? '#dc2626' : '#475569'}}>{fm(s.months)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{s.weeksNoSale === null ? '—' : s.weeksNoSale+' 周'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{s.inStockRate === null ? '—' : (s.inStockRate*100).toFixed(0)+'%'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{s.excessQty ? fmtNum(s.excessQty) : '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{s.excessQty && s.excessValue !== null ? '¥'+fmtMoney(s.excessValue) : '—'}</td>
+                <td className="px-3 py-2 text-xs text-slate-600">{!D.hasDetail ? '需渠道明细' : (s.chList.length ? s.chList.slice(0,3).map(x => `${x.ch}(${fmtNum(x.vol)})`).join('、') : <span className="text-red-500">近4周无渠道动销</span>)}</td>
+                <td className="px-3 py-2 text-xs text-indigo-600">{s.opportunity.length ? s.opportunity.join('、') : '—'}</td>
+                <td className="px-3 py-2 text-xs text-slate-600 min-w-[180px]">{SLOW_META[s.status].advice}</td>
+              </tr>))}</tbody>
+          </table>
+        </div>
+      </Card>
+      <Card title="⑦ 渠道 × 品类 通货能力矩阵与能力缺口" subtitle="格内 = 该渠道在该品类近4周销量中的份额；能力缺口 = 渠道整体份额 ≥3%，但某品类份额不足其整体份额的 30%">
+        {!D.hasDetail ? (
+          <p className="text-xs text-amber-600 py-4">当前没有 SKU×渠道 明细。用矩阵格式（含「商品编码」列）上传渠道周数据后，自动生成渠道通货能力矩阵、能力缺口、去化渠道和铺货机会。</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto mb-4">
+              <table className="text-xs">
+                <thead><tr><th className="px-2 py-1 text-left text-slate-500 sticky left-0 bg-white">品类</th>{D.matrix.channels.map(ch => <th key={ch} className="px-2 py-1 text-slate-500 font-medium whitespace-nowrap">{ch}</th>)}</tr></thead>
+                <tbody>{D.matrix.rows.map(r => (
+                  <tr key={r.cat}>
+                    <td className="px-2 py-1 whitespace-nowrap sticky left-0 bg-white"><span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{background:r.color}}/>{r.cat}</span></td>
+                    {r.cells.map(c => <td key={c.ch} className="px-2 py-1 text-center tabular-nums" style={{background: c.share > 0 ? `rgba(99,102,241,${(0.08 + c.share*0.8).toFixed(2)})` : '#f8fafc', color: c.share > 0.45 ? '#fff' : '#334155'}}>{c.share > 0 ? Math.round(c.share*100)+'%' : '·'}</td>)}
+                  </tr>))}</tbody>
+              </table>
+            </div>
+            <h4 className="text-sm font-medium text-slate-600 mb-2">渠道能力缺口（{D.gaps.length}）</h4>
+            {D.gaps.length === 0 ? <p className="text-xs text-slate-400">暂无明显缺口</p> : (
+              <div className="space-y-1.5">{D.gaps.slice(0,20).map((g,i) => (
+                <div key={i} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                  <b className="text-slate-700">{g.ch}</b>：整体份额 {(g.chShare*100).toFixed(1)}%，但在「{g.cat}」仅 {(g.catShare*100).toFixed(1)}% → 该品类通货能力不足，可针对性提供样品、内容素材或品类专项返利
+                </div>))}</div>
+            )}
+          </>
+        )}
+      </Card>
     </div>
   );
 }
