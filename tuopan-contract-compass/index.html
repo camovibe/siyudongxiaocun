@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>私域托盘商 · 批采定价 × 返点货补 一体化测算 V2.0</title>
+<title>私域托盘商 · 批采定价 × 返点货补 一体化测算 V2.1</title>
 <style>
 :root{--bg:#0b1120;--card:#111827;--line:#1f2937;--txt:#f1f5f9;--mut:#94a3b8;--acc:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
@@ -91,7 +91,7 @@ svg text{fill:#ffffff;font-size:11px}
 <body>
 
 <div class="tabbar"><div class="tabin">
-  <span class="ttl">私域托盘商 · 批采定价 × 返点货补 <span style="color:#38bdf8">V2.0</span></span>
+  <span class="ttl">私域托盘商 · 批采定价 × 返点货补 <span style="color:#38bdf8">V2.1</span></span>
   <button data-tab="pricing" class="on">① 批采定价</button>
   <button data-tab="rebate">② 返点货补</button>
 </div></div>
@@ -457,6 +457,10 @@ svg text{fill:#ffffff;font-size:11px}
 
   <div class="card">
     <h2>④ B 指定 SKU 与 B 上限自动计算</h2>
+    <div class="rgrid" style="margin-bottom:6px">
+      <label class="ri"><input type="checkbox" id="l_extimp">罗盘数据联动：灌入真实 SKU 动销 / 综合到手价 / 成本（默认关闭，可随时一键关闭还原演示值）</label>
+    </div>
+    <div class="note" id="extimp_info" style="display:none"></div>
     <div class="tbl">
       <table>
         <thead><tr>
@@ -548,6 +552,11 @@ svg text{fill:#ffffff;font-size:11px}
 </div>
 
 <!-- ================= 定价页脚本 ================= -->
+<script>
+/* ==== 兆丰罗盘真实数据快照（V2.1 联动接口数据源；由 data.json 离线生成，口径见④横幅） ==== */
+window.COMPASS_DEFAULTS = {"exportedAt": 1795492462404, "version": "v3.8", "weeks": 35, "periodFirst": "3/24", "periodLast": "11/16", "recentWeeks": 12, "skuCount": 47, "topChannels": [{"name": "共享菜园", "share": 14.7}, {"name": "爱库存", "share": 13.1}, {"name": "鲸灵", "share": 8.8}, {"name": "洋葱omall", "share": 8.0}, {"name": "美团医药", "share": 7.4}], "skus": [{"code": "493945", "name": "健安喜Vitapak男性40+每日营养包\\30包*1盒\\493945", "cat": "营养包", "recentMonthSales": 2117, "fullMonthSales": 2239, "termPrice": 181.94, "cost": 59.46, "activeWeeks": 33, "totalSales": 18085}, {"code": "490009", "name": "健安喜姜黄奶蓟精华\\120粒*1瓶\\490009", "cat": "植提", "recentMonthSales": 2102, "fullMonthSales": 1336, "termPrice": 133.39, "cost": 38.51, "activeWeeks": 35, "totalSales": 10793}, {"code": "490006", "name": "健安喜97%高纯度鱼油软胶囊 60粒", "cat": "心脑血管健康", "recentMonthSales": 1968, "fullMonthSales": 1996, "termPrice": 125.05, "cost": 32.74, "activeWeeks": 32, "totalSales": 16119}, {"code": "493948", "name": "健安喜Vitapak女性40+每日营养包\\30包*1盒\\493948", "cat": "营养包", "recentMonthSales": 1923, "fullMonthSales": 2025, "termPrice": 184.68, "cost": 59.0, "activeWeeks": 33, "totalSales": 16357}, {"code": "493949", "name": "健安喜Vitapak女性50+每日营养包\\30包*1盒\\493949", "cat": "营养包", "recentMonthSales": 1810, "fullMonthSales": 1539, "termPrice": 199.94, "cost": 58.62, "activeWeeks": 32, "totalSales": 12430}, {"code": "493944", "name": "健安喜Vitapak男性30+每日营养包\\30包*1盒\\493944", "cat": "营养包", "recentMonthSales": 1691, "fullMonthSales": 1417, "termPrice": 131.65, "cost": 50.95, "activeWeeks": 34, "totalSales": 11448}, {"code": "493946", "name": "健安喜Vitapak男性50+每日营养包\\30包*1盒\\493946", "cat": "营养包", "recentMonthSales": 1662, "fullMonthSales": 1395, "termPrice": 201.25, "cost": 59.98, "activeWeeks": 33, "totalSales": 11264}, {"code": "490054", "name": "健安喜CaDK120粒*1盒", "cat": "骨骼健康", "recentMonthSales": 1505, "fullMonthSales": 961, "termPrice": 54.94, "cost": 13.0, "activeWeeks": 31, "totalSales": 7762}, {"code": "785378", "name": "健安喜辅酶Q10软胶囊100MG\\120粒*1瓶\\785378", "cat": "心脑血管健康", "recentMonthSales": 879, "fullMonthSales": 552, "termPrice": 102.59, "cost": 38.97, "activeWeeks": 31, "totalSales": 4457}, {"code": "493947", "name": "健安喜Vitapak女性30+每日营养包\\30包*1盒\\493947", "cat": "营养包", "recentMonthSales": 705, "fullMonthSales": 696, "termPrice": 124.06, "cost": 43.26, "activeWeeks": 34, "totalSales": 5618}, {"code": "490052", "name": "健安喜儿童液体钙镁锌（包装升级款） 30袋", "cat": "孕婴童营养", "recentMonthSales": 676, "fullMonthSales": 372, "termPrice": 112.1, "cost": 32.49, "activeWeeks": 35, "totalSales": 3001}, {"code": "785377", "name": "健安喜辅酶Q10软胶囊100MG\\60粒*1瓶\\785377", "cat": "心脑血管健康", "recentMonthSales": 625, "fullMonthSales": 337, "termPrice": 82.25, "cost": 20.99, "activeWeeks": 30, "totalSales": 2721}, {"code": "490028", "name": "健安喜Vitapak女性20+每日营养包\\30包/盒\\490028", "cat": "营养包", "recentMonthSales": 470, "fullMonthSales": 399, "termPrice": 94.96, "cost": 47.42, "activeWeeks": 33, "totalSales": 3220}, {"code": "785379", "name": "健安喜辅酶Q10软胶囊200MG\\60粒*1瓶\\785379", "cat": "心脑血管健康", "recentMonthSales": 442, "fullMonthSales": 226, "termPrice": 123.89, "cost": 33.63, "activeWeeks": 26, "totalSales": 1824}, {"code": "493960", "name": "健安喜硒元素（200微克）\\90片*1瓶\\493960", "cat": "基础维矿", "recentMonthSales": 439, "fullMonthSales": 440, "termPrice": 47.63, "cost": 12.62, "activeWeeks": 32, "totalSales": 3557}, {"code": "493942", "name": "健安喜奶蓟精华片650mg\\120粒*1瓶\\493942", "cat": "植提", "recentMonthSales": 348, "fullMonthSales": 278, "termPrice": 101.62, "cost": 37.94, "activeWeeks": 32, "totalSales": 2242}, {"code": "601400", "name": "健安喜浓缩大豆异黄酮胶囊90粒\\601400", "cat": "植提", "recentMonthSales": 344, "fullMonthSales": 184, "termPrice": 82.37, "cost": 21.69, "activeWeeks": 23, "totalSales": 1488}, {"code": "490060", "name": "健安喜高钙液体钙镁锌\\20条*1盒\\490060", "cat": "孕婴童营养", "recentMonthSales": 303, "fullMonthSales": 931, "termPrice": 74.96, "cost": 17.89, "activeWeeks": 21, "totalSales": 7518}, {"code": "493939", "name": "健安喜四倍鱼油迷你软胶囊（800mg）\\240粒*1瓶\\493939", "cat": "心脑血管健康", "recentMonthSales": 242, "fullMonthSales": 357, "termPrice": 273.34, "cost": 134.77, "activeWeeks": 35, "totalSales": 2884}, {"code": "601401", "name": "健安喜葡萄籽精华300mg \\100粒*1瓶\\601401", "cat": "植提", "recentMonthSales": 240, "fullMonthSales": 324, "termPrice": 65.6, "cost": 24.85, "activeWeeks": 30, "totalSales": 2620}, {"code": "490023", "name": "健安喜女士多种维生素矿物质缓释片\\120粒*1瓶\\490023", "cat": "基础维矿", "recentMonthSales": 239, "fullMonthSales": 308, "termPrice": 121.22, "cost": 32.53, "activeWeeks": 34, "totalSales": 2487}, {"code": "490029", "name": "健安喜深海鱼油胶囊\\400粒/1瓶\\490029", "cat": "心脑血管健康", "recentMonthSales": 238, "fullMonthSales": 167, "termPrice": 230.88, "cost": 94.57, "activeWeeks": 33, "totalSales": 1347}, {"code": "490061", "name": "健安喜七合一加钙优骨力氨糖软骨素运动关节片\\120片", "cat": "骨骼健康", "recentMonthSales": 222, "fullMonthSales": 175, "termPrice": 106.57, "cost": 40.14, "activeWeeks": 33, "totalSales": 1414}, {"code": "490044", "name": "健安喜VC30粒*1盒", "cat": "基础维矿", "recentMonthSales": 205, "fullMonthSales": 155, "termPrice": 41.5, "cost": 10.46, "activeWeeks": 31, "totalSales": 1249}, {"code": "493927", "name": "健安喜三倍浓缩加强型鱼油软胶囊（小粒装）\\240粒*1瓶\\493927", "cat": "心脑血管健康", "recentMonthSales": 194, "fullMonthSales": 228, "termPrice": 165.25, "cost": 84.28, "activeWeeks": 34, "totalSales": 1840}, {"code": "490003", "name": "健安喜七合一加钙优骨力氨糖软骨素运动关节片\\160片*1瓶\\490003", "cat": "骨骼健康", "recentMonthSales": 193, "fullMonthSales": 155, "termPrice": 119.93, "cost": 50.83, "activeWeeks": 32, "totalSales": 1248}, {"code": "490038", "name": "健安喜深海鱼油胶囊\\120粒*1瓶\\490038", "cat": "心脑血管健康", "recentMonthSales": 181, "fullMonthSales": 124, "termPrice": 91.48, "cost": 35.36, "activeWeeks": 34, "totalSales": 1002}, {"code": "490027", "name": "健安喜Vitapak男性20+每日营养包\\30包/盒\\490027", "cat": "营养包", "recentMonthSales": 136, "fullMonthSales": 448, "termPrice": 100.68, "cost": 43.32, "activeWeeks": 31, "totalSales": 3620}, {"code": "490062", "name": "健安喜辅酶Q10软胶囊200MG\\150粒*1瓶\\490062", "cat": "心脑血管健康", "recentMonthSales": 129, "fullMonthSales": 161, "termPrice": 235.76, "cost": 61.29, "activeWeeks": 29, "totalSales": 1300}, {"code": "493926", "name": "健安喜三倍鱼油迷你软胶囊\\120粒*1瓶\\493926", "cat": "心脑血管健康", "recentMonthSales": 92, "fullMonthSales": 121, "termPrice": 85.72, "cost": 44.68, "activeWeeks": 35, "totalSales": 980}, {"code": "604205", "name": "健安喜褪黑素片3毫克\\120片*1瓶\\604205", "cat": "基础维矿", "recentMonthSales": 88, "fullMonthSales": 59, "termPrice": 36.5, "cost": 8.62, "activeWeeks": 22, "totalSales": 480}, {"code": "493980", "name": "GNC三倍卵磷脂软胶囊1200MG180粒", "cat": "心脑血管健康", "recentMonthSales": 87, "fullMonthSales": 30, "termPrice": 91.24, "cost": 28.56, "activeWeeks": 10, "totalSales": 240}, {"code": "490036", "name": "健安喜N-乙酰葡萄糖氨复合饮品\\10包*1盒\\490036", "cat": "骨骼健康", "recentMonthSales": 80, "fullMonthSales": 65, "termPrice": 45.05, "cost": 10.44, "activeWeeks": 14, "totalSales": 521}, {"code": "493993", "name": "GNC番茄红素软胶囊30MG60粒", "cat": "植提", "recentMonthSales": 80, "fullMonthSales": 28, "termPrice": 88.16, "cost": 37.92, "activeWeeks": 12, "totalSales": 230}, {"code": "490020", "name": "GNC健安喜Vitapak男士每日营养包进阶款\\30包*1盒", "cat": "营养包", "recentMonthSales": 58, "fullMonthSales": 69, "termPrice": 210.81, "cost": 101.22, "activeWeeks": 17, "totalSales": 560}, {"code": "493995", "name": "健安喜三倍卵磷脂软胶囊/1200毫克/份\\360粒*1瓶\\493995", "cat": "心脑血管健康", "recentMonthSales": 53, "fullMonthSales": 191, "termPrice": 145.46, "cost": 52.99, "activeWeeks": 33, "totalSales": 1541}, {"code": "493924", "name": "健安喜柠檬酸钙片(1000mg）\\180片*1瓶\\493924", "cat": "骨骼健康", "recentMonthSales": 51, "fullMonthSales": 69, "termPrice": 51.64, "cost": 19.16, "activeWeeks": 23, "totalSales": 560}, {"code": "490046", "name": "健安喜EPA1200 高纯度鱼油\\60粒*1盒\\490046", "cat": "心脑血管健康", "recentMonthSales": 47, "fullMonthSales": 33, "termPrice": 215.52, "cost": 63.25, "activeWeeks": 26, "totalSales": 267}, {"code": "490048", "name": "健安喜Vitapak®儿童每日营养包升级款\\30包*1盒", "cat": "孕婴童营养", "recentMonthSales": 33, "fullMonthSales": 25, "termPrice": 165.25, "cost": 57.85, "activeWeeks": 17, "totalSales": 201}, {"code": "604204", "name": "健安喜维生素C缓释片1000毫克\\180片*1瓶", "cat": "基础维矿", "recentMonthSales": 31, "fullMonthSales": 45, "termPrice": 82.64, "cost": 39.85, "activeWeeks": 13, "totalSales": 360}, {"code": "490026", "name": "健安喜柠檬酸钙维生素D维生素K复合迷你钙\\360片/瓶\\490026", "cat": "骨骼健康", "recentMonthSales": 27, "fullMonthSales": 195, "termPrice": 97.67, "cost": 29.31, "activeWeeks": 30, "totalSales": 1572}, {"code": "493959", "name": "健安喜维生素E软胶囊180mg\\100粒*1瓶", "cat": "基础维矿", "recentMonthSales": 20, "fullMonthSales": 18, "termPrice": 59.0, "cost": 19.81, "activeWeeks": 18, "totalSales": 147}, {"code": "493925", "name": "健安喜高含量钙片（1000mg)\\180片*1瓶\\493925", "cat": "骨骼健康", "recentMonthSales": 8, "fullMonthSales": 59, "termPrice": 58.33, "cost": 17.06, "activeWeeks": 23, "totalSales": 476}, {"code": "453522", "name": "健安喜多重抗衰鱼油", "cat": "心脑血管健康", "recentMonthSales": 5, "fullMonthSales": 4, "termPrice": 292.5, "cost": 59.96, "activeWeeks": 9, "totalSales": 31}, {"code": "490022", "name": "健安喜男士多种维生素矿物质缓释片\\120粒*1瓶\\490022", "cat": "基础维矿", "recentMonthSales": 0, "fullMonthSales": 65, "termPrice": 116.02, "cost": 32.43, "activeWeeks": 7, "totalSales": 523}, {"code": "493923", "name": "健安喜叶黄素20mg60粒*1盒", "cat": "植提", "recentMonthSales": 0, "fullMonthSales": 395, "termPrice": 51.91, "cost": 12.82, "activeWeeks": 16, "totalSales": 3194}, {"code": "493938", "name": "健安喜四倍鱼油迷你软胶囊（800mg）\\120粒*1瓶\\493938", "cat": "心脑血管健康", "recentMonthSales": 0, "fullMonthSales": 153, "termPrice": 167.49, "cost": 68.96, "activeWeeks": 20, "totalSales": 1232}]};
+</script>
+
 <script>
 (function(){
   var $=function(id){return document.getElementById(id);};
@@ -1013,7 +1022,7 @@ svg text{fill:#ffffff;font-size:11px}
     var sync=$('l_sync').checked;
     $('sku_body').innerHTML=curRows.length?curRows.map(function(r,i){
       var o=r.o,h='<tr>';
-      h+=r.linked?('<td>'+esc(r.name)+' '+tag('同步','mute')+'</td><td>'+f2(r.price)+'</td>'):(txtCell('sku',i,'name',o.name)+numCell('sku',i,'price',o.price));
+      h+=r.linked?('<td>'+esc(r.name)+(r.o.impName?'<br><span class="sub">&rarr; '+esc(r.o.impName)+'</span>':'')+' '+tag('同步','mute')+'</td><td>'+f2(r.price)+'</td>'):(txtCell('sku',i,'name',o.name)+numCell('sku',i,'price',o.price));
       ['base','recent','actual','floor'].forEach(function(k){h+=numCell('sku',i,k,o[k]);});
       h+=chkCell('sku',i,'expiring',o.expiring)+chkCell('sku',i,'pick',o.pick);
       ['ref','st','dig','cap','pcs','val','net','warn'].forEach(function(k){h+='<td id="sku-'+i+'-'+k+'"></td>';});
@@ -1223,6 +1232,7 @@ svg text{fill:#ffffff;font-size:11px}
     if(t.type==='checkbox'&&!isChange)return;
     if(t.id==='l_sync'){toggleSync(t.checked);return;}
     if(t.id==='l_rate'){recalc();return;}
+    if(t.id==='l_extimp'){extimpApply(t.checked);return;}
     var tt=t.getAttribute('data-t');
     if(tt){
       var i=+t.getAttribute('data-i'),k=t.getAttribute('data-k');
@@ -1264,6 +1274,57 @@ svg text{fill:#ffffff;font-size:11px}
     if($('l_sync').checked&&s!==skuSig)renderSku();
     recalc();
   };
+
+  /* ================= V2.1 罗盘数据联动（默认关闭，可一键还原） =================
+     口径：recent=近12周周均x4.33；base=全期周均x4.33（窗口35周，非完整12个月）；
+           actual=终端实收中位价；floor=罗盘成本；开票单价不在数据中，一律不导入。 */
+  var EXT_SNAP=null;
+  function extimpValidate(D){
+    if(!D||!D.skus||!D.skus.length)return '未找到罗盘数据快照（COMPASS_DEFAULTS 缺失）';
+    if(D.skus.length<4)return '罗盘 SKU 数不足（仅 '+D.skus.length+' 个），放弃导入';
+    var bad=D.skus.slice(0,4).filter(function(r){return !(+r.recentMonthSales>=0)||!(+r.fullMonthSales>=0)||!(+r.cost>0)||!(+r.termPrice>0);});
+    if(bad.length)return '数据校验失败：'+bad.map(function(r){return r.code;}).join('、')+' 存在成本/到手价/动销异常';
+    return null;
+  }
+  function extimpApply(on){
+    var info=$('extimp_info');
+    if(on){
+      var D=window.COMPASS_DEFAULTS,err=extimpValidate(D);
+      if(err){info.style.display='';info.innerHTML=tag('导入失败','bad')+' '+esc(err)+'；已回退演示值';$('l_extimp').checked=false;return;}
+      if($('l_sync').checked&&PR()){
+        var p=PR();seedExt();EXT_SNAP={};
+        p.skus.forEach(function(sk){EXT_SNAP[sk.id]=Object.assign({},ext[sk.id]||blankExt());});
+        p.skus.forEach(function(sk,i){
+          var r=D.skus[i];if(!r)return;
+          var prev=ext[sk.id]||blankExt();
+          ext[sk.id]={base:r.fullMonthSales,recent:r.recentMonthSales,actual:r.termPrice,floor:r.cost,
+            expiring:false,pick:(typeof prev.pick==='boolean'?prev.pick:true),
+            impName:r.code+' '+r.name};
+        });
+      }else{
+        EXT_SNAP={local:JSON.stringify(localSkus)};
+        localSkus=D.skus.slice(0,6).map(function(r){
+          return Object.assign({id:'L'+(++lid),name:r.code+' '+r.name,price:0},
+            {base:r.fullMonthSales,recent:r.recentMonthSales,actual:r.termPrice,floor:r.cost,expiring:false,pick:true});
+        });
+      }
+      var dt=new Date(+D.exportedAt),age=Math.floor((Date.now()-(+D.exportedAt))/864e5);
+      info.style.display='';
+      info.innerHTML=tag('已灌入真实数据','ok')+(age>45?' '+tag('数据偏旧 '+age+' 天','warn'):'')+
+        ' 数据截至 <b>'+esc(D.periodLast)+'</b> 周（共 '+D.weeks+' 周，'+(D.version||'')+'，导出于 '+dt.getFullYear()+'-'+(dt.getMonth()+1)+'-'+dt.getDate()+'）。'+
+        '近3月月均 = 近12周周均×4.33；"12月月均"列为 '+D.weeks+' 周全期月均（窗口不足12个月）；综合到手价 = 终端实收中位价；保本极限底价已按罗盘成本初始化。'+
+        '<br><b>开票单价不在罗盘数据中，当前仍为演示值（199/129/89/59），请按合约实际开票价逐行修改后再读结论。</b>'+
+        'SKU 按近3月动销排序映射，名称旁 &rarr; 为真实编码与品名；关闭开关即还原导入前数值。';
+    }else{
+      if(EXT_SNAP){
+        if(EXT_SNAP.local!=null){try{localSkus=JSON.parse(EXT_SNAP.local);}catch(e){}}
+        else{Object.keys(EXT_SNAP).forEach(function(id){ext[id]=EXT_SNAP[id];});}
+        EXT_SNAP=null;
+      }
+      info.style.display='none';info.innerHTML='';
+    }
+    renderAll();
+  }
   renderAll();
 })();
 </script>
