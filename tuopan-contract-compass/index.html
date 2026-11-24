@@ -1187,7 +1187,7 @@ window.COMPASS_DEFAULTS = {"exportedAt": 1795492462404, "version": "v3.8", "week
       set('pcs',ev[i].ok?('<b>'+f0(pcs)+'</b>'+(capHit?' '+tag('摊薄封顶','warn'):'')):'—');
       set('val',ev[i].ok?f2(val):'—');
       set('net',f2(net));set('warn',tag(wt,wc));
-      return {id:x.id,name:x.name,price:x.price,ref:ev[i].ref.toFixed(1),st:ev[i].st,ok:ev[i].ok,capHit:capHit,dig:ev[i].ok?dig[i]:0,digV:digV[i],cap:isFinite(capP)?capP:'不限',pcs:pcs,val:val,net:net,warn:wt};
+      return {id:x.id,name:x.name,imp:(x.o&&x.o.impName)||'',price:x.price,ref:ev[i].ref.toFixed(1),st:ev[i].st,ok:ev[i].ok,capHit:capHit,dig:ev[i].ok?dig[i]:0,digV:digV[i],cap:isFinite(capP)?capP:'不限',pcs:pcs,val:val,net:net,warn:wt};
     });
     var A=R-Bact;
     $('k_R').textContent=f2(R);
@@ -1208,7 +1208,7 @@ window.COMPASS_DEFAULTS = {"exportedAt": 1795492462404, "version": "v3.8", "week
 
   function exportCSV(){
     var rows=[['SKU','开票单价','参考动销(件/月)','状态','额外可消化(件)','额外可消化货值','摊薄上限(件)','B赠品件数','B赠品货值','含返点净价','保本预警']];
-    lastAlloc.forEach(function(a){rows.push([a.name,a.price,a.ref,a.st,a.dig,a.digV.toFixed(2),a.cap,a.pcs,a.val.toFixed(2),a.net.toFixed(2),a.warn]);});
+    lastAlloc.forEach(function(a){rows.push([a.imp||a.name,a.price,a.ref,a.st,a.dig,a.digV.toFixed(2),a.cap,a.pcs,a.val.toFixed(2),a.net.toFixed(2),a.warn]);});
     var csv='\ufeff'+rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
     try{
       var b=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(b),a=document.createElement('a');
