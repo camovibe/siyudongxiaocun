@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>私域托盘商 · 批采定价 × 返点货补 一体化测算</title>
+<title>私域托盘商 · 批采定价 × 返点货补 一体化测算 V2.0</title>
 <style>
 :root{--bg:#0b1120;--card:#111827;--line:#1f2937;--txt:#f1f5f9;--mut:#94a3b8;--acc:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
 *{box-sizing:border-box}
@@ -75,6 +75,9 @@ svg text{fill:#ffffff;font-size:11px}
 .opt-fields label{display:flex;flex-direction:column;gap:4px;color:#cbd5e1;font-size:12px}
 .opt-fields input,.opt-fields select{width:100%;background:#0b1220;border:1px solid #334155;color:#fff;border-radius:6px;padding:7px 8px;font-size:13px}
 .opt-fields .wide{grid-column:1/-1}
+.opt-fields .combo{display:flex;gap:6px}
+.opt-fields .combo input{flex:1;min-width:0}
+.opt-fields .combo select{width:96px;flex:none}
 .opt-result{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:12px 0}
 .opt-result .kpi{min-width:0}
 .opt-table{overflow-x:auto}
@@ -88,7 +91,7 @@ svg text{fill:#ffffff;font-size:11px}
 <body>
 
 <div class="tabbar"><div class="tabin">
-  <span class="ttl">私域托盘商 · 批采定价 × 返点货补</span>
+  <span class="ttl">私域托盘商 · 批采定价 × 返点货补 <span style="color:#38bdf8">V2.0</span></span>
   <button data-tab="pricing" class="on">① 批采定价</button>
   <button data-tab="rebate">② 返点货补</button>
 </div></div>
@@ -147,20 +150,24 @@ svg text{fill:#ffffff;font-size:11px}
           <label>公域预计向我方批采额（万元，按现价）<input id="o_pub_buy" type="number" min="0" step="10" value="5000"></label>
           <label>私域批采额转化为当年已售商品成本比例（%）<input id="o_priv_cogs" type="number" min="0" max="200" step="1" value="100"></label>
           <label>公域批采额转化为当年已售商品成本比例（%）<input id="o_pub_cogs" type="number" min="0" max="200" step="1" value="100"></label>
+          <label>私域期初库存覆盖年度销量比例（%）<input id="o_priv_inv" type="number" min="0" max="100" step="1" value="0"></label>
+          <label>公域期初库存覆盖年度销量比例（%）<input id="o_pub_inv" type="number" min="0" max="100" step="1" value="0"></label>
+          <label>私域新价采购覆盖年度销量比例（%）<input id="o_priv_newbuy" type="number" min="0" max="100" step="1" value="100"></label>
+          <label>公域新价采购覆盖年度销量比例（%）<input id="o_pub_newbuy" type="number" min="0" max="100" step="1" value="100"></label>
         </div>
-        <div class="opt-muted" style="margin-top:8px">终端收入按扣除退款退货后的净 Sell-out 填写；批采额按现行批采价填写。两者占比由系统分别计算。转化比例用于处理跨年库存：100% 表示本年批采额全部对应本年已售商品成本，低于 100% 表示部分进入期末库存。</div>
+        <div class="opt-muted" style="margin-top:8px">终端收入按扣除退款退货后的净 Sell-out 填写；批采额按现行批采价填写。两者占比由系统分别计算。转化比例用于处理跨年库存：100% 表示本年批采额全部对应本年已售商品成本，低于 100% 表示部分进入期末库存。<b>期初库存按原采购成本计价，不因本次调价增加；只有新价采购覆盖部分承担批采涨幅。</b>期初库存覆盖 ＋ 新价采购覆盖 ≤ 100%，超出时新价采购自动压回；其余为其他采购来源，单独展示、不强行归入新批采。</div>
       </div>
       <div class="card" style="margin:0">
         <h3>② 公私域经营效率（分别编辑）</h3>
         <div class="opt-fields">
-          <label>私域平台/交易费用率（占终端收入 %）<input id="o_priv_platform" type="number" min="0" max="100" step="0.5" value="1"></label>
-          <label>公域平台/交易费用率（占终端收入 %）<input id="o_pub_platform" type="number" min="0" max="100" step="0.5" value="8"></label>
-          <label>私域流量/推广费用率（%）<input id="o_priv_marketing" type="number" min="0" max="100" step="0.5" value="2"></label>
-          <label>公域流量/推广费用率（%）<input id="o_pub_marketing" type="number" min="0" max="100" step="0.5" value="15"></label>
-          <label>私域物流/履约费用率（%）<input id="o_priv_logistics" type="number" min="0" max="100" step="0.5" value="3"></label>
-          <label>公域物流/履约费用率（%）<input id="o_pub_logistics" type="number" min="0" max="100" step="0.5" value="4"></label>
-          <label>私域其他经营费用率（%）<input id="o_priv_other" type="number" min="0" max="100" step="0.5" value="2"></label>
-          <label>公域其他经营费用率（%）<input id="o_pub_other" type="number" min="0" max="100" step="0.5" value="3"></label>
+          <label>私域平台/交易费用率（%）</<div class="combo"><input id="o_priv_platform" type="number" min="0" max="100" step="0.5" value="1"><select id="o_priv_platform_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>公域平台/交易费用率（%）</<div class="combo"><input id="o_pub_platform" type="number" min="0" max="100" step="0.5" value="8"><select id="o_pub_platform_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>私域流量/推广费用率（%）</<div class="combo"><input id="o_priv_marketing" type="number" min="0" max="100" step="0.5" value="2"><select id="o_priv_marketing_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>公域流量/推广费用率（%）</<div class="combo"><input id="o_pub_marketing" type="number" min="0" max="100" step="0.5" value="15"><select id="o_pub_marketing_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>私域物流/履约费用率（%）</<div class="combo"><input id="o_priv_logistics" type="number" min="0" max="100" step="0.5" value="3"><select id="o_priv_logistics_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>公域物流/履约费用率（%）</<div class="combo"><input id="o_pub_logistics" type="number" min="0" max="100" step="0.5" value="4"><select id="o_pub_logistics_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>私域其他经营费用率（%）</<div class="combo"><input id="o_priv_other" type="number" min="0" max="100" step="0.5" value="2"><select id="o_priv_other_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
+          <label>公域其他经营费用率（%）</<div class="combo"><input id="o_pub_other" type="number" min="0" max="100" step="0.5" value="3"><select id="o_pub_other_m"><option value="rev" selected>按收入</option><option value="vol">按销量</option><option value="fixed">固定金额</option></select></div></label>
           <label>私域最低经营利润率要求（%）<input id="o_priv_floor" type="number" step="0.5" value="0"></label>
           <label>公域最低经营利润率要求（%）<input id="o_pub_floor" type="number" step="0.5" value="0"></label>
           <label>私域批采涨价传导到终端售价比例（%）<input id="o_priv_pass" type="number" min="0" max="200" step="5" value="0"></label>
@@ -168,7 +175,7 @@ svg text{fill:#ffffff;font-size:11px}
           <label>私域终端销量价格弹性（每涨价 1%，销量变化 %）<input id="o_priv_elastic" type="number" step="0.1" value="0"></label>
           <label>公域终端销量价格弹性（每涨价 1%，销量变化 %）<input id="o_pub_elastic" type="number" step="0.1" value="-1"></label>
         </div>
-        <div class="opt-muted" style="margin-top:8px">价格传导比例=托盘商把批采涨幅转嫁给消费者的比例；价格弹性通常为负数。默认弹性只是演示假设，务必替换为自身历史数据或情景假设。填 0 表示暂不模拟销量变化。</div>
+        <div class="opt-muted" style="margin-top:8px">价格传导比例=托盘商把批采涨幅转嫁给消费者的比例；价格弹性通常为负数。默认弹性只是演示假设，务必替换为自身历史数据或情景假设。填 0 表示暂不模拟销量变化。<b>每项费用可独立选择计提方式</b>：按收入 = 费率 × 调价后终端收入；按销量 = 费率 × 基准终端收入 × 销量系数（费率相对基准收入的占比）；固定金额 = 费率 × 基准终端收入，不随调价变化。四项独立计提，无重复扣除。</div>
       </div>
     </div>
     <div class="opt-grid" style="margin-top:14px">
@@ -179,16 +186,17 @@ svg text{fill:#ffffff;font-size:11px}
           <label>托盘商年度综合经营利润目标（万元）<input id="o_merchant_target" type="number" step="10" value="0"></label>
           <label class="wide">公司毛利约束模式
             <select id="o_company_mode">
-              <option value="C" selected>C｜不设硬性底线，仅展示毛利变化</option>
-              <option value="A">A｜每元批采商品毛利不低于现价水平</option>
-              <option value="B">B｜公司批采毛利率不低于自定义值</option>
+              <option value="A" selected>A｜公司年度增量商品毛利 ≥ 0（以不开展新增合作为基准）</option>
+              <option value="B">B｜公司年度增量商品毛利 ≥ 自定义最低增量金额</option>
+              <option value="C">C｜公司批采毛利率 ≥ 自定义保护底线</option>
             </select>
           </label>
-          <label>模式 B：公司最低批采毛利率（%）<input id="o_company_floor" type="number" min="0" max="99.9" step="0.5" value="17"></label>
+          <label>模式 B：最低增量商品毛利（万元）<input id="o_company_min_incr" type="number" step="10" value="0"></label>
+          <label>模式 C：公司最低批采毛利率（%）<input id="o_company_floor" type="number" min="0" max="99.9" step="0.5" value="17"></label>
           <label>批采涨幅扫描上限（%）<input id="o_scan_max" type="number" min="0" max="300" step="5" value="30"></label>
           <label>额度保护方案：现价保护额度（万元）<input id="o_protect_cap" type="number" min="0" step="100" value="3000"></label>
         </div>
-        <div class="opt-muted" style="margin-top:8px">A/B 是公司毛利底线开关；C 为默认，不排除可能有价值的增量机会。托盘商约束始终包括：公私域分别达到最低利润率，且年度综合经营利润达到目标。</div>
+        <div class="opt-muted" style="margin-top:8px">A/B/C 共用同一套公司年度商品毛利引擎，约束真实参与批采涨幅扫描与最优解筛选，默认 A；无可行解时明确提示，不会用扫描上限伪装推荐值。托盘商约束始终包括：公私域分别达到最低利润率，且年度综合经营利润达到目标。</div>
       </div>
       <div class="card" style="margin:0">
         <h3>④ 当前结构自动汇总</h3>
@@ -247,6 +255,11 @@ svg text{fill:#ffffff;font-size:11px}
       <div class="opt-result" id="o_cmp_annual_kpis"></div>
       <div class="opt-table"><table id="o_cmp_annual_table"></table></div>
       <div class="opt-intro" id="o_cmp_conclusion" style="margin-top:12px"></div>
+      <h3 style="margin-top:16px">③ 新增业务占比敏感性分析（总批采额不变，只改变新增/替代结构）</h3>
+      <div class="opt-table"><table id="o_cmp_sens_table"></table></div>
+      <h3 style="margin-top:16px">④ 公司毛利保本所需最低新增业务占比</h3>
+      <div class="opt-result" id="o_cmp_minshare_kpis"></div>
+      <div class="opt-muted" id="o_cmp_minshare_note"></div>
       <div class="opt-muted">
         计算方法：先把托盘商按现价口径的批采额换算为商品成本基数（现价批采额 ×〔1−公司当前批采毛利率〕）；再按所选方案的实际加权涨幅计算开票收入，并扣除 A 抵扣票面金额与 B 加件货物成本。被替代部分与一级经销商在同等商品成本基数上比较；真正新增部分单列为新增商品毛利。年度净变化 = 真正新增部分商品毛利 + 被替代部分的（托盘商商品毛利 − 一级经销商原商品毛利）。本模型不把“托盘商全部采购额”都当成新增业务。货补率与 A/B 占比沿用上方返点/货补模型当前值；如未设置货补，则按 0 计算。
       </div>
@@ -878,10 +891,12 @@ svg text{fill:#ffffff;font-size:11px}
       unified:linked2027?{x:U.x,invoice:linked2027.inv,faceUplift:linked2027.up,actualUplift:linked2027.p,breakEvenCannibalism:linked2027.be,deltaGM:linked2027.d,effectiveMargin:linked2027.nm,rebateRate:Rall,beta:beta,leakLoss:linked2027.leak}:null,
       skus:skuRows.map(function(r){return {id:r.id,n:r.n,pr:r.pr,q:r.q};})};
     if(typeof window.__onPricing==='function'){try{window.__onPricing();}catch(err){console.error(err);}}
+    var ppSig=JSON.stringify([Rall,beta,mInv,v('paidBase')]);
+    if(ppSig!==lastPpSig){lastPpSig=ppSig;if(typeof window.__onPricingParams==='function'){try{window.__onPricingParams();}catch(err){console.error(err);}}}
   }
 
   /* 返点页回调：β 或 B 件数变化时重算一次（签名相同则不再重算，防循环） */
-  var rebSig='';
+  var rebSig='';var lastPpSig='';
   window.__onRebate=function(){
     var r=window.__REBATE;if(!r||!$('bFollow').checked)return;
     if(r.sig===rebSig)return;
@@ -1272,33 +1287,45 @@ svg text{fill:#ffffff;font-size:11px}
 <!-- ================= 2027 统一批采价反推引擎 ================= -->
 <script>
 (function(){
-  var ids=['o_priv_rev','o_pub_rev','o_priv_buy','o_pub_buy','o_priv_cogs','o_pub_cogs','o_priv_platform','o_pub_platform','o_priv_marketing','o_pub_marketing','o_priv_logistics','o_pub_logistics','o_priv_other','o_pub_other','o_priv_floor','o_pub_floor','o_priv_pass','o_pub_pass','o_priv_elastic','o_pub_elastic','o_company_m','o_merchant_target','o_company_mode','o_company_floor','o_scan_max','o_protect_cap','o_cmp_dist_avg','o_cmp_dist_worst','o_cmp_replace_rate','o_cmp_price_mode','o_cmp_same_cost'];
+  var ids=['o_priv_rev','o_pub_rev','o_priv_buy','o_pub_buy','o_priv_cogs','o_pub_cogs','o_priv_platform','o_pub_platform','o_priv_marketing','o_pub_marketing','o_priv_logistics','o_pub_logistics','o_priv_other','o_pub_other','o_priv_floor','o_pub_floor','o_priv_pass','o_pub_pass','o_priv_elastic','o_pub_elastic','o_company_m','o_merchant_target','o_company_mode','o_company_floor','o_scan_max','o_protect_cap','o_cmp_dist_avg','o_cmp_dist_worst','o_cmp_replace_rate','o_cmp_price_mode','o_cmp_same_cost','o_company_min_incr','o_priv_inv','o_pub_inv','o_priv_newbuy','o_pub_newbuy','o_priv_platform_m','o_priv_marketing_m','o_priv_logistics_m','o_priv_other_m','o_pub_platform_m','o_pub_marketing_m','o_pub_logistics_m','o_pub_other_m'];
   function $(id){return document.getElementById(id);}
   function n(id){var x=parseFloat($(id).value);return isFinite(x)?x:0;}
   function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
   function money(x){return isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:1,maximumFractionDigits:1}):'—';}
   function pct(x,d){return isFinite(x)?(x*100).toFixed(d==null?1:d)+'%':'—';}
   function kpi(t,v,d,c){return '<div class="kpi"><div class="t">'+t+'</div><div class="v '+(c||'')+'">'+v+'</div><div class="d">'+(d||'')+'</div></div>';}
+  function feeMode(prefix,key){var el=$('o_'+prefix+'_'+key+'_m');return el?el.value:'rev';}
   function channel(prefix,name,x){
     var rev=n('o_'+prefix+'_rev'),buy=n('o_'+prefix+'_buy'),cogs=buy*n('o_'+prefix+'_cogs')/100;
-    var exp=(n('o_'+prefix+'_platform')+n('o_'+prefix+'_marketing')+n('o_'+prefix+'_logistics')+n('o_'+prefix+'_other'))/100;
     var floor=n('o_'+prefix+'_floor')/100,pass=n('o_'+prefix+'_pass')/100,elastic=n('o_'+prefix+'_elastic');
     var terminalPriceChange=pass*x;
     var volume=clamp(1+elastic*terminalPriceChange,0,3);
     var adjustedRev=rev*(1+terminalPriceChange)*volume;
-    var adjustedCogs=cogs*(1+x)*volume;
-    var costs=adjustedRev*exp;
+    /* 期初库存与其他来源按原采购成本计价，只有新价采购部分承担涨幅；覆盖率之和超 100% 时新价采购自动压回 */
+    var invPct=clamp(n('o_'+prefix+'_inv'),0,100)/100;
+    var newPct=clamp(n('o_'+prefix+'_newbuy'),0,100)/100;
+    if(invPct+newPct>1)newPct=1-invPct;
+    var otherPct=Math.max(0,1-invPct-newPct);
+    var soldCost=cogs*volume;
+    var adjustedCogs=soldCost*(invPct+otherPct)+soldCost*newPct*(1+x);
+    /* 费用按各自计提方式：收入型随成交额、销量型随销量、固定型不随调价变化；四项独立计提，无重复扣除 */
+    function fee(key){var rate=n('o_'+prefix+'_'+key)/100,mode=feeMode(prefix,key);
+      if(mode==='vol')return rate*rev*volume;
+      if(mode==='fixed')return rate*rev;
+      return rate*adjustedRev;}
+    var costs=fee('platform')+fee('marketing')+fee('logistics')+fee('other');
+    var baseExp=(n('o_'+prefix+'_platform')+n('o_'+prefix+'_marketing')+n('o_'+prefix+'_logistics')+n('o_'+prefix+'_other'))/100;
     var profit=adjustedRev-adjustedCogs-costs;
-    return {name:name,rev:rev,buy:buy,cogs:cogs,expenseRate:exp,floor:floor,pass:pass,elastic:elastic,volume:volume,adjustedRev:adjustedRev,adjustedCogs:adjustedCogs,costs:costs,profit:profit,margin:adjustedRev>0?profit/adjustedRev:-Infinity,baseProfit:rev-cogs-rev*exp};
+    return {name:name,rev:rev,buy:buy,cogs:cogs,expenseRate:adjustedRev>0?costs/adjustedRev:0,floor:floor,pass:pass,elastic:elastic,volume:volume,adjustedRev:adjustedRev,adjustedCogs:adjustedCogs,costs:costs,profit:profit,margin:adjustedRev>0?profit/adjustedRev:-Infinity,baseProfit:rev-cogs-rev*baseExp,invPct:invPct,newPct:newPct,otherPct:otherPct};
   }
   function company(x,priv,pub){
     var m=n('o_company_m')/100,totalBuy=priv.buy+pub.buy,volumeWeightedBuy=priv.buy*priv.volume+pub.buy*pub.volume;
-    var margin=(m+x)/(1+x),gross=volumeWeightedBuy*(m+x),base=totalBuy*m;
-    var mode=$('o_company_mode').value,ok=true,why='';
-    if(mode==='A'){ok=(m+x)>=m-1e-9;why='每元批采商品毛利不低于现价水平';}
-    if(mode==='B'){ok=margin>=n('o_company_floor')/100-1e-9;why='批采毛利率不低于自定义底线';}
-    if(mode==='C')why='不设置公司毛利硬性底线';
-    return {gross:gross,base:base,increment:gross-base,margin:margin,volumeWeightedBuy:volumeWeightedBuy,ok:ok,why:why};
+    var margin=(m+x)/(1+x),gross=volumeWeightedBuy*(m+x),base=totalBuy*m,increment=gross-base;
+    var mode=$('o_company_mode').value,ok=true,why='',cTarget=NaN,cValue=NaN;
+    if(mode==='A'){cTarget=0;cValue=increment;ok=increment>=-1e-9;why='公司年度增量商品毛利 ≥ 0（不开展新增合作为基准）';}
+    if(mode==='B'){cTarget=n('o_company_min_incr');cValue=increment;ok=increment>=cTarget-1e-9;why='公司年度增量商品毛利 ≥ 最低增量 '+money(cTarget)+' 万';}
+    if(mode==='C'){cTarget=n('o_company_floor')/100;cValue=margin;ok=margin>=cTarget-1e-9;why='公司批采毛利率 ≥ '+pct(cTarget)+'（保护底线）';}
+    return {gross:gross,base:base,increment:increment,margin:margin,volumeWeightedBuy:volumeWeightedBuy,ok:ok,why:why,constraint:{mode:mode,value:cValue,target:cTarget,head:cValue-cTarget,ok:ok,why:why}};
   }
   function evaluate(x){
     var a=channel('priv','私域',x),b=channel('pub','公域',x),c=company(x,a,b);
@@ -1349,7 +1376,11 @@ svg text{fill:#ffffff;font-size:11px}
       kpi('双方可接受涨幅区间',first&&last?minText+' ～ '+maxText:'无',feasible.length?'扫描步长约 '+pct(maxX/steps,2):'未发现可行点',feasible.length?'opt-good':'opt-bad')+
       kpi('公司年度增量商品毛利',rec?money(rec.company.increment)+' 万':'—',rec?'相对现价批采的增量毛利':'—',rec&&rec.company.increment>=0?'opt-good':'opt-warn')+
       kpi('托盘商年度综合经营利润',rec?money(rec.totalProfit)+' 万':'—',rec?'目标 '+money(rec.target)+' 万':'—',rec&&rec.totalProfit>=rec.target?'opt-good':'opt-bad')+
-      kpi('公司批采毛利率',rec?pct(rec.company.margin):'—',rec?('现价 '+pct(n('o_company_m')/100)):'—');
+      kpi('公司批采毛利率',rec?pct(rec.company.margin):'—',rec?('现价 '+pct(n('o_company_m')/100)):'—')+
+      (function(){var cs=(rec||base).company.constraint,isC=cs.mode==='C';
+        var cur=isC?pct(cs.value):(money(cs.value)+' 万'),tgt=isC?pct(cs.target):(money(cs.target)+' 万');
+        var hd=isC?((cs.head*100).toFixed(1)+' pp'):(money(cs.head)+' 万');
+        return kpi('公司毛利约束（模式 '+cs.mode+'）',cs.ok?'达标':'未达标','当前 '+cur+' ｜目标 '+tgt+' ｜剩余安全空间 '+hd,cs.ok?'opt-good':'opt-bad');})();
     $('o_linked_kpis').innerHTML=rec&&linked?
       kpi('联动方案票面涨幅',pct(linked.faceUplift),'应与上方推荐涨幅 '+pct(rec.x)+' 一致',Math.abs(linked.faceUplift-rec.x)<0.0001?'opt-good':'opt-warn')+
       kpi('扣除 A/B 货补后的实际单价涨幅',pct(linked.actualUplift),'货补率 '+pct(linked.rebateRate)+'｜B 加件占比 β '+pct(linked.beta),linked.actualUplift>=0?'opt-good':'opt-warn')+
@@ -1399,7 +1430,7 @@ svg text{fill:#ffffff;font-size:11px}
       $('o_tier_table').innerHTML='';
       $('o_tier_note').textContent='未找到同时满足公私域利润率、托盘商年度综合利润及公司毛利约束的超额提价幅度。';
     }
-    $('o_formula_note').innerHTML='计算口径：① 全量统一涨价方案：调价后采购成本 = 基准批采额 × 当年售出成本转化率 × (1+统一批采涨幅) × 销量变化系数；② 额度保护方案：现价保护额度按公私域现价批采额比例分摊，公私域超额部分提价幅度相同；年度汇总中以“超额部分占总批采额比例 × 超额提价幅度”折算渠道加权平均涨幅，再用于终端售价传导和销量弹性；③ 经营利润 = 调价后终端净收入 − 已售商品成本 − 平台/交易、推广、物流履约及其他经营费用；④ 公司增量商品毛利按公私域销量变化后的采购数量分别计算（公司单位成本不变）；⑤ 公司批采毛利率 = (现有毛利率+加权平均涨幅)/(1+加权平均涨幅)。不含税务、资金成本、固定费用、退货变化、返利货补的二次影响，需按实际口径补充。额度保护方案是年度汇总近似，未模拟SKU级价格差异与渠道间保护额度挪用；建议通过合同限定额度、渠道和SKU范围。';
+    $('o_formula_note').innerHTML='计算口径：① 全量统一涨价方案：调价后采购成本 = 基准批采额 × 当年售出成本转化率 × (1+统一批采涨幅) × 销量变化系数；② 额度保护方案：现价保护额度按公私域现价批采额比例分摊，公私域超额部分提价幅度相同；年度汇总中以“超额部分占总批采额比例 × 超额提价幅度”折算渠道加权平均涨幅，再用于终端售价传导和销量弹性；③ 经营利润 = 调价后终端净收入 − 已售商品成本 − 平台/交易、推广、物流履约及其他经营费用；④ 公司增量商品毛利按公私域销量变化后的采购数量分别计算（公司单位成本不变）；⑤ 公司批采毛利率 = (现有毛利率+加权平均涨幅)/(1+加权平均涨幅)。不含税务、资金成本、固定费用、退货变化、返利货补的二次影响，需按实际口径补充。额度保护方案是年度汇总近似，未模拟SKU级价格差异与渠道间保护额度挪用；建议通过合同限定额度、渠道和SKU范围；⑥ 费用计提方式：收入型 = 费率×调价后终端收入，销量型 = 费率×基准终端收入×销量系数，固定型 = 费率×基准终端收入（不随调价变化），四类费用独立计提、无重复扣除；⑦ 调价后已售商品成本 = 基准已售成本×销量系数×〔期初库存覆盖 ＋ 其他来源覆盖 ＋ 新价采购覆盖×(1+涨幅)〕，期初库存与其他来源按原采购成本计价，覆盖率之和超过 100% 时新价采购自动压回，其他采购来源单独展示、不归入新批采；⑧ 公司毛利约束 A＝增量商品毛利≥0，B＝增量商品毛利≥自定义最低增量，C＝批采毛利率≥保护底线，三者均真实参与涨幅扫描与最优解筛选。';
     // ⑦ 对标：只比较公司商品毛利，不扣渠道经营费用。
     var cmpMode=$('o_cmp_price_mode').value;
     var cmpUplift=cmpMode==='tier'?(tierBest?tierBest.effectiveUplift:NaN):(rec?rec.x:NaN);
@@ -1447,9 +1478,40 @@ svg text{fill:#ffffff;font-size:11px}
       (netVsWorst>=0?'按“至少优于最差一级经销商”的标准，当前情景通过。':'按“至少优于最差一级经销商”的标准，当前情景未通过；需提高批采价、降低替代比例，或确认是否存在真实新增需求。')
       :'当前所选批采价方案没有可行解，年度比较暂不可用。';
 
+    // ③ 新增业务占比敏感性：总批采额不变，只改变新增/替代结构（gpForMerchant 对成本基数线性，全量毛利不随结构变化）
+    var lamW2=worstM/(1-worstM),lamA2=avgM/(1-avgM),costTotal=totalBuy*(1-m0);
+    var invoiceTotal=isFinite(cmpUplift)?costTotal/(1-m0)*(1+cmpUplift):NaN;
+    var gpTotal=isFinite(cmpUplift)?gpForMerchant(costTotal,cmpUplift):NaN;
+    var cMode=$('o_company_mode').value,cMinIncr=n('o_company_min_incr'),cFloorM=n('o_company_floor')/100;
+    function consJudge(incW){
+      if(cMode==='A')return {ok:incW>=-1e-9,txt:'增量≥0'};
+      if(cMode==='B')return {ok:incW>=cMinIncr-1e-9,txt:'增量≥'+money(cMinIncr)+'万'};
+      var mg=isFinite(invoiceTotal)&&invoiceTotal>0?gpTotal/invoiceTotal:NaN;
+      return {ok:isFinite(mg)&&mg>=cFloorM-1e-9,txt:'毛利率'+pct(mg)+'≥'+pct(cFloorM)};
+    }
+    var sensH='<thead><tr><th>真正新增占比</th><th>托盘商年度批采额</th><th>真正新增采购额</th><th>被替代一级经销商采购额</th><th>托盘商方案公司商品毛利</th><th>相对最差一级经销商增量</th><th>相对一级经销商平均增量</th><th>公司毛利约束（'+cMode+'）</th></tr></thead><tbody>';
+    [0,0.25,0.5,0.75,1].forEach(function(s){
+      var newB=totalBuy*s,dispB=totalBuy-newB,dispC=dispB*(1-m0);
+      var incW=isFinite(gpTotal)?gpTotal-dispC*lamW2:NaN,incA=isFinite(gpTotal)?gpTotal-dispC*lamA2:NaN;
+      var cj=consJudge(incW);
+      sensH+='<tr class="'+(Math.abs(s-(1-replaceRate))<0.001?'hl':'')+'"><td><b>'+pct(s,0)+'</b></td><td>'+money(totalBuy)+'</td><td>'+money(newB)+'</td><td>'+money(dispB)+'</td><td>'+(isFinite(gpTotal)?money(gpTotal):'—')+'</td><td class="'+(incW>=0?'opt-good':'opt-bad')+'">'+(isFinite(incW)?(incW>=0?'+':'')+money(incW):'—')+'</td><td class="'+(incA>=0?'opt-good':'opt-warn')+'">'+(isFinite(incA)?(incA>=0?'+':'')+money(incA):'—')+'</td><td class="'+(cj.ok?'opt-good':'opt-bad')+'">'+(cj.ok?'满足':'不满足')+'（'+cj.txt+'）</td></tr>';
+    });
+    $('o_cmp_sens_table').innerHTML=sensH+'</tbody>';
+    // ④ 最低新增占比反推：gpTotal − (1−s)·costTotal·λ ≥ 0 → s ≥ 1 − gpTotal/(costTotal·λ)
+    function minShare(lam){if(!isFinite(gpTotal))return NaN;if(gpTotal<0)return Infinity;var s=1-gpTotal/(costTotal*lam);return s<0?0:s;}
+    var sW=minShare(lamW2),sA=minShare(lamA2),curNew=1-replaceRate;
+    function msTxt(s){return s===Infinity?'<b class="opt-bad">当前价格方案不可行</b>':(isFinite(s)?pct(s):'—');}
+    $('o_cmp_minshare_kpis').innerHTML=
+      kpi('相对最差一级经销商：最低新增占比',msTxt(sW),sW===Infinity?'新增占比 100% 也无法保本':(sW===0?'即使全部替代存量也保本':'低于此比例公司毛利受损'),(sW!==Infinity&&isFinite(sW)&&curNew>=sW-1e-9)?'opt-good':(sW===Infinity?'opt-bad':'opt-warn'))+
+      kpi('相对一级经销商平均：最低新增占比',msTxt(sA),sA===Infinity?'新增占比 100% 也无法保本':(sA===0?'即使全部替代存量也优于平均':'按平均毛利率口径'),(sA!==Infinity&&isFinite(sA)&&curNew>=sA-1e-9)?'opt-good':(sA===Infinity?'opt-bad':'opt-warn'))+
+      kpi('当前假设的新增业务占比',pct(curNew,0),'= 1 − 替代比例 '+pct(replaceRate,0))+
+      kpi('距离保本临界值（最差口径）',sW===Infinity?'方案不可行':(isFinite(sW)?((curNew-sW)*100).toFixed(1)+' pp':'—'),sW===Infinity?'请调整批采价或货补':(curNew>=sW-1e-9?'为正表示有安全空间':'为负表示低于临界值'),(sW!==Infinity&&isFinite(sW)&&curNew>=sW-1e-9)?'opt-good':'opt-bad');
+    $('o_cmp_minshare_note').innerHTML='反推方法：总批采额、批采价格、商品成本、一级经销商毛利率固定，求解 公司年度增量商品毛利 = 托盘商方案商品毛利 − (1−新增占比)×总商品成本×一级经销商替代损失系数 ≥ 0。敏感性表中 A/B 模式按相对最差一级经销商的增量判定（保守口径）；C 模式按整体批采毛利率判定，与新增/替代结构无关，五行结果相同。蓝色高亮行为当前假设的新增占比。';
+
   }
   ids.forEach(function(id){$(id).addEventListener('input',run);$(id).addEventListener('change',run);});
   // 2027 模型为唯一主数据源；旧模型仅负责把推荐价转换为货补/渠道替代口径。
+  window.__onPricingParams=function(){run();};
   run();
 })();
 </script>
