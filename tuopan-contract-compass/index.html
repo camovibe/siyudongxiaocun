@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>私域托盘商 · 批采定价 × 返点货补 一体化测算</title>
+<style>
+:root{--bg:#0b1120;--card:#111827;--line:#1f2937;--txt:#f1f5f9;--mut:#94a3b8;--acc:#38bdf8;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.6}
+.wrap{max-width:1400px;margin:0 auto;padding:20px}
+h1{font-size:22px;margin:0 0 4px;color:#fff}
+h2{font-size:16px;margin:0 0 12px;color:var(--acc)}
+h3{font-size:14px;margin:14px 0 6px;color:#fff}
+.sub{color:#cbd5e1;font-size:13px}
+.grid{display:grid;grid-template-columns:420px 1fr;gap:16px;margin-top:16px}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+label.f{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0}
+label.f span{color:#fff}
+label.f small{display:block;color:#cbd5e1;font-size:12px}
+input[type=number],input[type=text]{background:#0b1220;border:1px solid #334155;color:#fff;border-radius:6px;padding:5px 8px;width:110px;text-align:right;font-size:13px}
+input[type=text]{text-align:left;width:100%}
+input:focus{outline:1px solid var(--acc)}
+input[readonly]{opacity:.6;cursor:not-allowed}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:right;white-space:nowrap;color:#fff}
+th{font-weight:600;background:#0f172a}
+td:first-child,th:first-child{text-align:left;white-space:normal}
+td.l,th.l{text-align:left;white-space:normal}
+tr.hl td{background:rgba(56,189,248,.10)}
+tr.bd td{background:rgba(245,158,11,.10)}
+tr.ref td{color:#cbd5e1}
+.tbl{overflow-x:auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi .t{color:#cbd5e1;font-size:12px}
+.kpi .v{font-size:22px;font-weight:700;color:#fff}
+.kpi .d{font-size:12px;color:#fff}
+.ok{color:var(--ok)!important}.warn{color:var(--warn)!important}.bad{color:var(--bad)!important}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;color:#fff}
+.tag.ok{background:rgba(34,197,94,.25)}.tag.bad{background:rgba(239,68,68,.25)}.tag.warn{background:rgba(245,158,11,.25)}.tag.mute{background:#334155}
+.rule{background:#0f172a;border-left:3px solid var(--warn);padding:10px 12px 10px 28px;border-radius:6px;margin:8px 0;color:#fff}
+.rule li{margin:3px 0}
+button{background:var(--acc);color:#0b1120;border:none;border-radius:6px;padding:7px 14px;font-weight:600;cursor:pointer;font-size:13px}
+button.g{background:#334155;color:#fff}
+button.x{background:transparent;color:var(--bad);padding:2px 6px}
+.concl li{margin:6px 0;color:#fff}
+textarea{width:100%;height:280px;background:#0b1220;color:#fff;border:1px solid #334155;border-radius:6px;padding:10px;font-family:Consolas,monospace;font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-size:12px;color:#fff}
+.legend i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
+svg text{fill:#ffffff;font-size:11px}
+.formula{font-family:Consolas,monospace;font-size:12px;color:#fff;background:#0f172a;padding:7px 10px;border-radius:6px;margin:4px 0}
+.tabbar{position:sticky;top:0;z-index:20;background:rgba(11,17,32,.96);border-bottom:1px solid var(--line)}
+.tabin{max-width:1400px;margin:0 auto;padding:10px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tabin .ttl{color:#fff;font-weight:700;margin-right:auto}
+.tabin button{background:#1f2937;color:#fff}
+.tabin button.on{background:var(--acc);color:#0b1120}
+#tab-rebate .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 16px}
+#tab-rebate label.rf{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#cbd5e1}
+#tab-rebate label.rf input{width:100%;text-align:left}
+#tab-rebate label.ri{display:flex;align-items:center;gap:8px;color:#fff;font-size:13px}
+#tab-rebate td input[type=number]{width:88px}
+#tab-rebate td input[type=text]{min-width:130px}
+#tab-rebate .note{font-size:12px;color:#cbd5e1;line-height:1.8;margin-top:8px}
+#tab-rebate .bar{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+#tab-rebate td.c,#tab-rebate th.c{text-align:center}
+#tab-rebate .kpis{margin-top:12px;margin-bottom:0}
+#tab-rebate ul.rules{margin:0;padding-left:18px;line-height:1.9;color:#fff}
+
+/* 2027 统一批采价反推模块 */
+.opt-intro{border-left:3px solid var(--acc);background:#0f172a;padding:12px 14px;border-radius:6px;margin:10px 0 14px;color:#e2e8f0}
+.opt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.opt-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+.opt-fields label{display:flex;flex-direction:column;gap:4px;color:#cbd5e1;font-size:12px}
+.opt-fields input,.opt-fields select{width:100%;background:#0b1220;border:1px solid #334155;color:#fff;border-radius:6px;padding:7px 8px;font-size:13px}
+.opt-fields .wide{grid-column:1/-1}
+.opt-result{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:12px 0}
+.opt-result .kpi{min-width:0}
+.opt-table{overflow-x:auto}
+.opt-table table{min-width:720px}
+.opt-muted{color:#cbd5e1;font-size:12px;line-height:1.7}
+.opt-good{color:var(--ok)!important}.opt-bad{color:var(--bad)!important}.opt-warn{color:var(--warn)!important}
+@media(max-width:760px){.opt-grid,.opt-fields{grid-template-columns:1fr}.opt-fields .wide{grid-column:auto}}
+
+</style>
+</head>
+<body>
+
+<div class="tabbar"><div class="tabin">
+  <span class="ttl">私域托盘商 · 批采定价 × 返点货补</span>
+  <button data-tab="pricing" class="on">① 批采定价</button>
+  <button data-tab="rebate">② 返点货补</button>
+</div></div>
+
+<!-- ================= 页签一：批采定价 ================= -->
+<div class="wrap" id="tab-pricing">
+  <h1>私域托盘商批采定价 · 货补（A 抵扣为主 + B 指定 SKU 加件为辅）测算器</h1>
+  <div class="sub">毛利率口径 <b>1 − 成本/批采价</b>｜货补执行 = <b>A 抵扣为主（占 1−β）＋ B 下批指定 SKU 加件摊薄为辅（占 β）</b>｜金额单位：万元｜单价：元｜件数取整｜所有输入框均可修改，实时重算</div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>名称对照</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>名称</th><th class="l">原符号 / 原名称</th><th class="l">含义</th></tr></thead>
+        <tbody>
+          <tr><td><b>新增批采替代率</b></td><td class="l">k</td><td class="l">托盘商新增批采中，不是新需求、而是挤掉一级经销商进货的比例</td></tr>
+          <tr><td><b>公司可承受替代率上限</b></td><td class="l">k*</td><td class="l">实际新增批采替代率超过这个值，合作就比不合作更亏（系统计算）</td></tr>
+          <tr><td><b>B加件货物替代率</b></td><td class="l">k_g（g = goods，货）</td><td class="l">B 加件多给的货中，流入公域、挤掉一级经销商进货的比例，最差 100%</td></tr>
+          <tr><td><b>一级经销商替代损失系数 λ</b></td><td class="l">g₁</td><td class="l">λ = m₁/(1−m₁)：一级经销商每减少 1 元商品成本额，对应公司损失的毛利金额</td></tr>
+          <tr><td><b>B 加件占比 β</b></td><td class="l">本版新增</td><td class="l">货补中用"下批指定 SKU 加件"兑现的比例；其余 1−β 用 A 抵扣兑现</td></tr>
+          <tr><td><b>增量定毛利率法</b></td><td class="l">方法2</td><td class="l">原有批采量维持原价，新增部分按指定毛利率定价，合并成一个统一价</td></tr>
+          <tr><td><b>一级经销商价差法</b></td><td class="l">方法4</td><td class="l">以一级经销商进价为锚，托盘商进价比它低一个合理价差</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>口径说明</h2>
+    <ul class="rule">
+      <li>① 货补兑现 = <b>A 抵扣为主 + B 指定 SKU 加件为辅</b>。B 占比 β 默认跟随返点页 ④ 的 B 实际占比（受 B 封顶和指定 SKU 可消化量约束），其余全部走 A。</li>
+      <li>② <b>A 抵扣</b>：下批开票后按返点额抵扣，对方任选 SKU，不退现金。公司让出的是<b>票面金额</b> = 票面货补 × (1 − β)。</li>
+      <li>③ <b>B 加件</b>：下批该 SKU 开票总额不变，加件、单价摊薄（例：原 1 件 1 元，改成 2 件、每件 0.5 元）。公司付出的是这批货的<b>成本</b> = 本批成本 × 货补率 × β。</li>
+      <li>④ 返点计提基数 = 实付货款，不含 A 抵扣与赠品，<b>不存在返上返</b>。</li>
+      <li>⑤ 只有 B 会多给货，所以B加件货物替代损失只计 B 部分。A 不多给货，但会拉低实际进价，这部分风险体现在"公域每元净利"里。</li>
+      <li>⑥ 被摊薄的 SKU 开票单价下降，最容易被砸到公域；单价明显偏低可能有税务和价格凭证风险，请财务确认。</li>
+      <li>⑦ 自报、无法核验的条件视为达标。SKU 测算假设各 SKU 开票毛利率一致。定价方法编号已取消，统一用名称。</li>
+    </ul>
+  </div>
+
+
+  <!-- ================= 2027 年经营目标与统一批采价反推 ================= -->
+  <div class="card" id="opt2027" style="margin-top:14px">
+    <h2>2027 年经营目标 × 公私域统一批采价反推</h2>
+    <div class="opt-intro">
+      <b>本模块作为年度决策主模型，并与下方批采/货补/渠道替代模型联动：推荐涨幅自动传入货补模型，重新计算票面涨幅、实际单价涨幅及公司可承受替代率上限。</b><br>
+      公域、私域的终端销售收入和向我方批采金额分别输入、互不强制绑定；各自设置费用、价格传导和需求弹性。系统按同一批采涨幅计算两边经营利润，并寻找托盘商达到利润要求时，公司可获得的最大批采涨幅。金额单位：万元；比例均为百分比。<b class="opt-warn">页面预置数字仅为演示值，不代表托盘商实际经营预测，正式判断前请逐项替换。</b>
+    </div>
+    <div class="opt-grid">
+      <div class="card" style="margin:0">
+        <h3>① 2027 年规模预测（两套口径独立输入）</h3>
+        <div class="opt-fields">
+          <label>私域预计终端净销售收入（万元）<input id="o_priv_rev" type="number" min="0" step="10" value="8000"></label>
+          <label>公域预计终端净销售收入（万元）<input id="o_pub_rev" type="number" min="0" step="10" value="12000"></label>
+          <label>私域预计向我方批采额（万元，按现价）<input id="o_priv_buy" type="number" min="0" step="10" value="3000"></label>
+          <label>公域预计向我方批采额（万元，按现价）<input id="o_pub_buy" type="number" min="0" step="10" value="5000"></label>
+          <label>私域批采额转化为当年已售商品成本比例（%）<input id="o_priv_cogs" type="number" min="0" max="200" step="1" value="100"></label>
+          <label>公域批采额转化为当年已售商品成本比例（%）<input id="o_pub_cogs" type="number" min="0" max="200" step="1" value="100"></label>
+        </div>
+        <div class="opt-muted" style="margin-top:8px">终端收入按扣除退款退货后的净 Sell-out 填写；批采额按现行批采价填写。两者占比由系统分别计算。转化比例用于处理跨年库存：100% 表示本年批采额全部对应本年已售商品成本，低于 100% 表示部分进入期末库存。</div>
+      </div>
+      <div class="card" style="margin:0">
+        <h3>② 公私域经营效率（分别编辑）</h3>
+        <div class="opt-fields">
+          <label>私域平台/交易费用率（占终端收入 %）<input id="o_priv_platform" type="number" min="0" max="100" step="0.5" value="1"></label>
+          <label>公域平台/交易费用率（占终端收入 %）<input id="o_pub_platform" type="number" min="0" max="100" step="0.5" value="8"></label>
+          <label>私域流量/推广费用率（%）<input id="o_priv_marketing" type="number" min="0" max="100" step="0.5" value="2"></label>
+          <label>公域流量/推广费用率（%）<input id="o_pub_marketing" type="number" min="0" max="100" step="0.5" value="15"></label>
+          <label>私域物流/履约费用率（%）<input id="o_priv_logistics" type="number" min="0" max="100" step="0.5" value="3"></label>
+          <label>公域物流/履约费用率（%）<input id="o_pub_logistics" type="number" min="0" max="100" step="0.5" value="4"></label>
+          <label>私域其他经营费用率（%）<input id="o_priv_other" type="number" min="0" max="100" step="0.5" value="2"></label>
+          <label>公域其他经营费用率（%）<input id="o_pub_other" type="number" min="0" max="100" step="0.5" value="3"></label>
+          <label>私域最低经营利润率要求（%）<input id="o_priv_floor" type="number" step="0.5" value="0"></label>
+          <label>公域最低经营利润率要求（%）<input id="o_pub_floor" type="number" step="0.5" value="0"></label>
+          <label>私域批采涨价传导到终端售价比例（%）<input id="o_priv_pass" type="number" min="0" max="200" step="5" value="0"></label>
+          <label>公域批采涨价传导到终端售价比例（%）<input id="o_pub_pass" type="number" min="0" max="200" step="5" value="50"></label>
+          <label>私域终端销量价格弹性（每涨价 1%，销量变化 %）<input id="o_priv_elastic" type="number" step="0.1" value="0"></label>
+          <label>公域终端销量价格弹性（每涨价 1%，销量变化 %）<input id="o_pub_elastic" type="number" step="0.1" value="-1"></label>
+        </div>
+        <div class="opt-muted" style="margin-top:8px">价格传导比例=托盘商把批采涨幅转嫁给消费者的比例；价格弹性通常为负数。默认弹性只是演示假设，务必替换为自身历史数据或情景假设。填 0 表示暂不模拟销量变化。</div>
+      </div>
+    </div>
+    <div class="opt-grid" style="margin-top:14px">
+      <div class="card" style="margin:0">
+        <h3>③ 公司约束与托盘商年度目标</h3>
+        <div class="opt-fields">
+          <label>公司当前批采毛利率（%）<input id="o_company_m" type="number" min="0" max="99.9" step="0.5" value="17"></label>
+          <label>托盘商年度综合经营利润目标（万元）<input id="o_merchant_target" type="number" step="10" value="0"></label>
+          <label class="wide">公司毛利约束模式
+            <select id="o_company_mode">
+              <option value="C" selected>C｜不设硬性底线，仅展示毛利变化</option>
+              <option value="A">A｜每元批采商品毛利不低于现价水平</option>
+              <option value="B">B｜公司批采毛利率不低于自定义值</option>
+            </select>
+          </label>
+          <label>模式 B：公司最低批采毛利率（%）<input id="o_company_floor" type="number" min="0" max="99.9" step="0.5" value="17"></label>
+          <label>批采涨幅扫描上限（%）<input id="o_scan_max" type="number" min="0" max="300" step="5" value="30"></label>
+          <label>额度保护方案：现价保护额度（万元）<input id="o_protect_cap" type="number" min="0" step="100" value="3000"></label>
+        </div>
+        <div class="opt-muted" style="margin-top:8px">A/B 是公司毛利底线开关；C 为默认，不排除可能有价值的增量机会。托盘商约束始终包括：公私域分别达到最低利润率，且年度综合经营利润达到目标。</div>
+      </div>
+      <div class="card" style="margin:0">
+        <h3>④ 当前结构自动汇总</h3>
+        <div class="opt-result" id="o_mix_kpis"></div>
+        <div class="opt-muted">终端营收占比与批采额占比是两套独立结构。模型不会把两者混为一谈，也不会假设公私域定价、经营成本或利润率相同。</div>
+      </div>
+    </div>
+    <div class="card" style="margin:14px 0 0">
+      <h3>⑤ 统一批采价优化结果</h3>
+      <div class="opt-result" id="o_main_kpis"></div>
+      <h3 style="margin-top:14px">货补与渠道替代风险联动结果</h3>
+      <div class="opt-result" id="o_linked_kpis"></div>
+      <div class="opt-muted" id="o_linked_note">等待统一批采价模型计算。</div>
+      <div class="opt-table"><table id="o_channel_table"></table></div>
+      <h3 style="margin-top:16px">不同批采涨幅情景对比</h3>
+      <div class="opt-table"><table id="o_scenario_table"></table></div>
+      <div id="o_conclusion" class="opt-intro" style="margin-top:12px"></div>
+      <h3 style="margin-top:18px">⑥ 额度保护方案：额度内维持现价，超额部分提价</h3>
+      <div class="opt-muted">这是与“全量统一涨价”并列的替代方案，不是同一方案里的折扣。默认将现价保护额度按公私域现价批采额比例分摊；两渠道获得相同保护比例。保护额度内按现价，超出部分按下方推荐涨幅提价。系统同时校验公私域利润率、托盘商年度综合利润和公司毛利约束。为年度汇总模型，终端售价传导与销量弹性按该渠道的加权平均批采涨幅估算。</div>
+      <div class="opt-result" id="o_tier_kpis"></div>
+      <div class="opt-table"><table id="o_tier_table"></table></div>
+      <div class="opt-muted" id="o_tier_note"></div>
+      <div class="opt-muted" id="o_formula_note"></div>
+
+      <h3 style="margin-top:20px">⑦ 托盘商替代一级经销商：公司商品毛利增量评估</h3>
+      <div class="opt-intro">
+        <b>本板块回答两个问题：</b>同等商品成本/同等货量，给托盘商供货是否比给最差一级经销商更赚钱？以及按托盘商 2027 年预计采购规模、实际替代比例计算，公司全年商品毛利究竟增加还是减少？
+        <br>公司收益口径按你的选择：<b>商品毛利 = 公司供货开票收入 − 商品成本 − 直接货补成本</b>。A 抵扣按让出的票面金额扣减，B 加件按新增货物成本扣减；不扣渠道佣金、推广、物流等经营费用。
+      </div>
+      <div class="opt-grid">
+        <div class="card" style="margin:0">
+          <h3>对标参数（可编辑）</h3>
+          <div class="opt-fields">
+            <label>一级经销商平均商品毛利率（%）<input id="o_cmp_dist_avg" type="number" min="0" max="99" step="0.5" value="40"></label>
+            <label>最差一级经销商商品毛利率（%）<input id="o_cmp_dist_worst" type="number" min="0" max="99" step="0.5" value="35"></label>
+            <label>托盘商新增批采中替代一级经销商的比例（%）<input id="o_cmp_replace_rate" type="number" min="0" max="100" step="1" value="50"></label>
+            <label class="wide">用于本板块的托盘商批采价方案
+              <select id="o_cmp_price_mode">
+                <option value="unified" selected>⑤ 全量统一批采价推荐方案</option>
+                <option value="tier">⑥ 额度保护方案（保护额度内现价，超额提价）</option>
+              </select>
+            </label>
+            <label class="wide">同等商品成本比较基数（万元）<input id="o_cmp_same_cost" type="number" min="0" step="100" value="1000"></label>
+          </div>
+          <div class="opt-muted" style="margin-top:8px">
+            一级经销商平均毛利率与最差一级经销商毛利率在本板块独立输入，不会自动覆盖左侧原模型 m₁。最差一级经销商毛利率请填你希望作为“最低可接受对标对象”的真实水平。替代比例是托盘商预计批采额中，原本会由一级经销商完成的比例；其余视为真正新增需求。
+          </div>
+        </div>
+        <div class="card" style="margin:0">
+          <h3>① 同等商品成本 / 同等货量比较</h3>
+          <div class="opt-result" id="o_cmp_same_kpis"></div>
+          <div class="opt-muted" id="o_cmp_same_note"></div>
+        </div>
+      </div>
+      <h3 style="margin-top:16px">② 2027 年度实际业务比较</h3>
+      <div class="opt-result" id="o_cmp_annual_kpis"></div>
+      <div class="opt-table"><table id="o_cmp_annual_table"></table></div>
+      <div class="opt-intro" id="o_cmp_conclusion" style="margin-top:12px"></div>
+      <div class="opt-muted">
+        计算方法：先把托盘商按现价口径的批采额换算为商品成本基数（现价批采额 ×〔1−公司当前批采毛利率〕）；再按所选方案的实际加权涨幅计算开票收入，并扣除 A 抵扣票面金额与 B 加件货物成本。被替代部分与一级经销商在同等商品成本基数上比较；真正新增部分单列为新增商品毛利。年度净变化 = 真正新增部分商品毛利 + 被替代部分的（托盘商商品毛利 − 一级经销商原商品毛利）。本模型不把“托盘商全部采购额”都当成新增业务。货补率与 A/B 占比沿用上方返点/货补模型当前值；如未设置货补，则按 0 计算。
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>基础参数</h2>
+        <label class="f"><span>托盘商原批采额<small>历史对照基准，需手动填写；2027 输入中没有该历史值</small></span><input type="number" id="p0" value="3000" step="100"></label>
+        <label class="f"><span>托盘商新批采总额<small>自动同步 2027 公私域批采额合计（现价）</small></span><input type="number" id="tot" value="10000" step="100" readonly></label>
+        <label class="f"><span>托盘商现毛利率 m₀ %<small>自动同步 2027 模型公司当前批采毛利率</small></span><input type="number" id="m0" value="17" step="0.5" readonly></label>
+        <label class="f"><span>一级经销商毛利率 m₁ %<small>公司卖给一级经销商的毛利率</small></span><input type="number" id="m1" value="40" step="0.5"></label>
+      </div>
+
+      <div class="card">
+        <h2>统一价定价方法（不给货补，只调开票价）</h2>
+        <div class="sub">共 3 种定价方法 + 2 条价格边界。思路、公式和未采纳的思路见右侧"定价方法总览"。</div>
+        <label class="f"><span>增量定毛利率法：增量部分毛利率 m_i %<small>原"方法2"｜原有量维持原价，新增量按此毛利率</small></span><input type="number" id="mi" value="30" step="0.5"></label>
+        <label class="f"><span>一级经销商价差法：合理价差 %<small>原"方法4"｜托盘商进价比一级经销商低多少</small></span><input type="number" id="gap" value="15" step="0.5"></label>
+        <label class="f"><span>全量目标毛利率法：全量毛利率 %<small>全部批采量统一按此毛利率（示例值）</small></span><input type="number" id="mu" value="23" step="0.5"></label>
+        <label class="f"><span>托盘商接受上限：私域最低每元净利 %<small>0 = 托盘商私域刚好不亏</small></span><input type="number" id="amin" value="0" step="0.5"></label>
+        <div class="sub">盈亏平衡底价不需要输入，系统按"新增批采替代率"自动计算。</div>
+      </div>
+
+      <div class="card">
+        <h2>货补方案</h2>
+        <label class="f"><span>开票毛利率 %<small>默认 27.25%：A 为主执行时保持原 20.82% 有效毛利率</small></span><input type="number" id="minv" value="27.25" step="0.25"></label>
+        <label class="f"><span>B 加件兑现占比 β %<small>A 抵扣占 1−β；勾选跟随时自动取返点页 ④</small></span><input type="number" id="bShare" value="30" step="1" min="0" max="100"></label>
+        <label class="f" style="justify-content:flex-start"><input type="checkbox" id="bFollow" checked><span>跟随返点页 B 实际占比（推荐）</span></label>
+        <div class="sub" id="bInfo"></div>
+        <h3>货补项（示例值，请按实际填）</h3>
+        <div class="tbl">
+          <table id="rbTable">
+            <thead><tr><th>货补项</th><th>比例%</th><th>可核验</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <button class="g" id="addRb">+ 添加货补项</button>
+          <span class="sub" id="rbSum"></span>
+        </div>
+        <label class="f" style="margin-top:12px"><span>货补倒推·达目标：目标有效毛利率 %<small>原"倒推A"</small></span><input type="number" id="tgt" value="26.5" step="0.5"></label>
+        <div class="sub">货补倒推·对标增量定毛利率法（原"倒推B"）：在任意新增批采替代率下，ΔGM 都与增量定毛利率法相同（已计入 A 抵扣与 B加件货物替代损失）。</div>
+      </div>
+
+      <div class="card">
+        <h2>下批 SKU 加件摊薄（B 加件部分）</h2>
+        <label class="f"><span>本批开票额（万）<small>本批货补在下批兑现</small></span><input type="number" id="bt" value="2800" step="100"></label>
+        <label class="f"><span>本批预计实付货款（万）<small>返点计提基数；不含 A 抵扣及赠品，可与开票额不同</small></span><input type="number" id="paidBase" value="2800" step="100" min="0"></label>
+        <label class="f"><span>下批规模 / 本批 %</span><input type="number" id="scale" value="100" step="5"></label>
+        <label class="f"><span>单 SKU 底线毛利率 %<small>摊薄后该行公司毛利率不低于此值</small></span><input type="number" id="floor" value="17" step="0.5"></label>
+        <div class="tbl">
+          <table id="skuIn">
+            <thead><tr><th>SKU</th><th>下批份额%</th><th>开票单价(元)</th><th>货补分配%</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="g" id="addSku">+ 添加 SKU</button>
+          <button class="g" id="evenSku">按份额等比例分配</button>
+          <span class="sub" id="skuSum"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>托盘商侧与存量渠道替代率</h2>
+        <div class="sub">以下 a、π₁ 是原模型中的下游经营者单位进货净利假设，仅用于原有定价方法对比；它们不是公司利润，也不会替代上方 2027 公私域独立经营模型的费用与利润输入。</div>
+        <label class="f"><span>a：托盘商私域每元进货净利 %<small>按现价</small></span><input type="number" id="a" value="10" step="1"></label>
+        <label class="f"><span>π₁：一级经销商公域每元净利 %<small>0 = 刚好保本</small></span><input type="number" id="pi1" value="0" step="1"></label>
+        <label class="f"><span>新增批采替代率 %<small>托盘商新增批采中，挤掉一级经销商进货的比例</small></span><input type="number" id="k" value="50" step="5"></label>
+        <label class="f"><span>B加件货物替代率 %<small>B 加件多给的货中，挤掉一级经销商进货的比例；最差 100%</small></span><input type="number" id="kg" value="100" step="5"></label>
+      </div>
+    </div>
+
+    <div>
+      <div class="kpis" id="kpis"></div>
+
+      <div class="card">
+        <h2>定价方法总览（所有方案的来源、思路与双方可接受性）</h2>
+        <div class="tbl"><table id="methTable"></table></div>
+        <div class="sub" style="margin-top:6px">公司 ✓ = 当前新增批采替代率下 ΔGM ≥ 0；托盘商 ✓ = 私域每元净利 ≥ 最低要求。两边都是 ✓ 才是能谈成的方案。"边界"两行之间就是可谈价格区间。</div>
+        <h3>未纳入测算的定价思路及原因</h3>
+        <ul class="rule" id="unusedList"></ul>
+      </div>
+
+      <div class="card">
+        <h2>方案对比（公司视角）</h2>
+        <div class="tbl"><table id="scTable"></table></div>
+        <div class="sub" style="margin-top:6px">ΔGM = 公司毛利 − 托盘商原毛利 − 新增批采替代率 × L − B加件货物替代损失（只计 B 加件的货）；为正表示比"不合作"更赚。蓝色 = 主推方案，黄色 = 价格边界，灰色 = 仅作参考。</div>
+      </div>
+
+      <div class="card">
+        <h2>下批 SKU 加件摊薄明细（B 加件部分，件数取整，超限和零头回流 A）</h2>
+        <div class="tbl"><table id="skuTable"></table></div>
+        <div class="sub" style="margin-top:6px" id="skuNote"></div>
+      </div>
+
+      <div class="card">
+        <h2>公司增量毛利 vs 新增批采替代率</h2>
+        <div id="chart"></div>
+        <div class="legend" id="legend"></div>
+        <div class="sub" style="margin-top:6px">每条线与 0 线的交点 = 该方案的公司可承受替代率上限；当前新增批采替代率落在交点左侧，表示该方案比不合作更赚。</div>
+      </div>
+
+      <div class="card">
+        <h2>托盘商视角：每元进货净利（按实际单价）</h2>
+        <div class="tbl"><table id="mcTable"></table></div>
+      </div>
+
+      <div class="card">
+        <h2>货补项审计</h2>
+        <div class="tbl"><table id="auditTable"></table></div>
+      </div>
+
+      <div class="card">
+        <h2>结论</h2>
+        <ul class="concl" id="concl"></ul>
+      </div>
+
+      <div class="card">
+        <h2>换算与测算逻辑</h2>
+        <div id="fmls"></div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button id="dl">一键下载分析逻辑（.md）</button>
+          <button class="g" id="cp">复制分析逻辑</button>
+        </div>
+        <div class="sub" id="dlMsg" style="margin-top:6px"></div>
+        <textarea id="exportBox" style="display:none;margin-top:8px" readonly></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 页签二：返点货补 ================= -->
+<div class="wrap" id="tab-rebate" style="display:none">
+  <h1>返点货补机制测算台</h1>
+  <div class="sub">主方式 A 抵扣 ＋ 补充 B 指定 SKU 加赠（上限自动计算）＋ C 类专用赠品单列 ＋ 返点余额台账｜金额单位：<b>元</b>｜件数取整</div>
+
+  <div class="card" style="margin-top:14px">
+    <h2>⓪ 与定价页联动</h2>
+    <div class="rgrid">
+      <label class="ri"><input type="checkbox" id="l_rate" checked>返点率 = 定价页"货补合计"；计提基数 = 定价页"本批预计实付货款" × 10000</label>
+      <label class="ri"><input type="checkbox" id="l_sync" checked>SKU 跟随定价页同步（名称、开票单价、摊薄上限）</label>
+    </div>
+    <div class="note" id="l_info"></div>
+  </div>
+
+  <div class="card">
+    <h2>① 全局参数</h2>
+    <div class="rgrid">
+      <label class="rf">返点率 r（%）<input class="p" type="number" id="p_rate" value="3" step="0.1" min="0"></label>
+      <label class="rf">计提基数：本期实付货款（元，不含抵扣与赠品）<input class="p" type="number" id="p_paid" value="1000000" min="0"></label>
+      <label class="rf">θ：对方对 B 返点的感知价值（0~1）<input class="p" type="number" id="p_theta" value="0.6" step="0.05" min="0" max="1"></label>
+      <label class="rf">B 占比封顶（%）<input class="p" type="number" id="p_cap" value="30" min="0" max="100"></label>
+      <label class="rf">增量系数 k（%）<input class="p" type="number" id="p_k" value="15" min="0"></label>
+      <label class="rf">返点周期起始月（1~12）<input class="p" type="number" id="p_start" value="12" min="1" max="12"></label>
+      <label class="rf">返点周期月数<input class="p" type="number" id="p_months" value="3" min="1"></label>
+      <label class="rf">618 系数（6 月）<input class="p" type="number" id="p_f618" value="1.5" step="0.1" min="0"></label>
+      <label class="rf">双 11 系数（11 月）<input class="p" type="number" id="p_f1111" value="1.8" step="0.1" min="0"></label>
+      <label class="ri"><input class="p" type="checkbox" id="p_surgeOn" checked>启用暴增保护</label>
+      <label class="rf">暴增阈值（近 3 月 ÷ 12 月均 &gt;）<input class="p" type="number" id="p_surgeRatio" value="1.5" step="0.1" min="1"></label>
+      <label class="ri"><input class="p" type="checkbox" id="p_clearOn" checked>启用清仓判定</label>
+      <label class="rf">清仓判定：到手价 ≤ 保本底价 ×（%）<input class="p" type="number" id="p_clearPct" value="110" min="0"></label>
+    </div>
+    <div class="note">返点计提基数 = 实付货款（不含 A 抵扣部分与 B/C 赠品），防止"返点生返点"。</div>
+  </div>
+
+  <div class="card">
+    <h2>② A/B 同口径对比计算器</h2>
+    <div class="rgrid">
+      <label class="rf">对方本期真实需求货值<input class="p" type="number" id="ab_D" value="10" min="0"></label>
+      <label class="rf">可用返点余额<input class="p" type="number" id="ab_R" value="1" min="0"></label>
+    </div>
+    <div class="tbl" style="margin-top:10px">
+      <table>
+        <thead><tr><th>方式</th><th>开票正价货值</th><th>抵扣</th><th>赠品货值</th><th>对方实付</th><th>对方到货</th><th>足款率（实付÷到货）</th><th>公司让出</th></tr></thead>
+        <tbody id="ab_body"></tbody>
+      </table>
+    </div>
+    <div class="note" id="ab_note"></div>
+  </div>
+
+  <div class="card">
+    <h2>③ B 占比 × θ：维持同等激励所需返点率</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>B 占比</th><th>对方感知价值（每 1 元返点）</th><th>维持同等激励所需返点率</th><th>额外成本（按计提基数）</th><th class="l">备注</th></tr></thead>
+        <tbody id="theta_body"></tbody>
+      </table>
+    </div>
+    <div class="note">感知价值 = 1 − B占比 × (1 − θ)；所需返点率 = r ÷ 感知价值。B 占比越高，返点在对方眼里越不值钱，所以 B 不宜拉满。</div>
+  </div>
+
+  <div class="card">
+    <h2>④ B 指定 SKU 与 B 上限自动计算</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr>
+          <th>SKU</th><th>开票单价</th><th>12月月均动销(件)</th><th>近3月月均动销(件)</th><th>综合到手价</th><th>保本极限底价</th>
+          <th class="c">临期</th><th class="c">指定为B</th>
+          <th>参考动销(件/月)</th><th>状态</th><th>额外可消化(件)</th><th>摊薄上限(件)</th><th>B赠品(件)</th><th>B赠品货值</th><th>含返点净价</th><th>保本预警</th><th>操作</th>
+        </tr></thead>
+        <tbody id="sku_body"></tbody>
+      </table>
+    </div>
+    <div class="bar">
+      <button class="g" data-radd="sku" id="sku_add">＋ 新增 SKU</button>
+      <button id="btn_csv">下载 B 赠品分配 CSV</button>
+      <span class="sub" id="csv_msg"></span>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="t">本期返点总额</div><div class="v" id="k_R"></div></div>
+      <div class="kpi"><div class="t">周期平均大促系数</div><div class="v" id="k_F"></div><div class="d" id="k_Fl"></div></div>
+      <div class="kpi"><div class="t">指定 SKU 额外可消化货值</div><div class="v" id="k_D"></div></div>
+      <div class="kpi"><div class="t">B 占比上限 = min(可消化÷返点, 封顶)</div><div class="v" id="k_Bcap"></div></div>
+      <div class="kpi"><div class="t">B 实际兑现（件数取整、摊薄封顶后）</div><div class="v" id="k_Bact"></div><div class="d" id="k_Bpct"></div></div>
+      <div class="kpi"><div class="t">A 抵扣（含零头与封顶回流）</div><div class="v" id="k_A"></div></div>
+    </div>
+    <div class="note">
+      额外可消化件数 = ⌊参考动销 × 周期月数 × 平均大促系数 × k⌋；B 按各 SKU 可消化货值比例分配，件数向下取整。<br>
+      同步模式下，B 件数还受定价页"单 SKU 降价上限"约束：摊薄上限 = ⌊原订件数 × 上限加件比⌋。下批没有订货的 SKU 摊薄上限为 0，不能单独开 0 元赠品。超出部分全部回流 A。<br>
+      本页的 <b>B 实际占比 = B 实际兑现 ÷ 返点总额</b>，会作为定价页的 β（定价页勾选"跟随"时）。<br>
+      含返点净价 = 开票单价 × (1 − r)。低于保本极限底价显示"跌破保本"，在底价 105% 以内显示"贴近保本"。临期品和清仓 SKU 一律不能作为 B 指定 SKU。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>⑤ 兑现方式口径校验（与定价页对账）</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>口径</th><th class="l">兑现结构</th><th>公司让利成本(元)</th><th>每 1 元返点成本</th><th>有效毛利率</th><th>较定价页货补方案</th></tr></thead>
+        <tbody id="mix_body"></tbody>
+      </table>
+    </div>
+    <div class="note" id="mix_note"></div>
+  </div>
+
+  <div class="card">
+    <h2>⑥ C 类专用赠品（小样/试用装/周边）— 单列，不计入返点</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>赠品名称</th><th>数量(件)</th><th>单件成本(元)</th><th>成本小计</th><th>操作</th></tr></thead>
+        <tbody id="gift_body"></tbody>
+      </table>
+    </div>
+    <div class="bar"><button class="g" data-radd="gift">＋ 新增 C 类赠品</button></div>
+    <div class="note" id="gift_total"></div>
+  </div>
+
+  <div class="card">
+    <h2>⑦ 返点余额结转台账（缺货兜底：有效期暂停 ＋ 任意 SKU 可抵 ＋ 终止随保证金结算）</h2>
+    <div class="rgrid">
+      <label class="rf">返点有效期（月，缺货月不计）<input class="p" type="number" id="l_life" value="12" min="1"></label>
+      <label class="rf">保证金（元）<input class="p" type="number" id="l_deposit" value="100000" min="0"></label>
+    </div>
+    <div class="tbl" style="margin-top:10px">
+      <table>
+        <thead><tr>
+          <th>月份</th><th>当月实付货款</th><th>A 抵扣使用</th><th>B 兑现使用</th><th class="c">我方缺货</th><th class="c">协议终止</th>
+          <th>期初余额</th><th>当月计提</th><th>实际使用</th><th>过期作废</th><th>期末余额</th><th class="l">状态</th><th>操作</th>
+        </tr></thead>
+        <tbody id="lg_body"></tbody>
+      </table>
+    </div>
+    <div class="bar"><button class="g" data-radd="lg">＋ 新增月份</button></div>
+    <div class="kpis" id="l_sum"></div>
+    <div class="note">当月计提 = 当月实付 × r，次月起可用；使用按先进先出扣减；"我方缺货"月份所有余额有效期暂停计算；勾选"协议终止"后，期末余额与保证金一并结算，不单独退返点现金。</div>
+  </div>
+
+  <div class="card">
+    <h2>⑧ 已确认规则清单</h2>
+    <ul class="rules">
+      <li>主方式 A：返点抵扣下批批采额，对方任选 SKU；不退现金。</li>
+      <li>补充方式 B：公司指定 SKU 加赠；上限 = min(指定 SKU 额外可消化货值 ÷ 返点总额, 封顶 30%)，封顶可调。</li>
+      <li>同等需求下 A 与 B 经济上等价（每 1 元返点成本 1.0）；B 只有在对方因此额外拿货时，成本才降到货的成本。B 的核心价值是"指定 SKU"。</li>
+      <li>临期品、清仓 SKU 不可作为 B 指定 SKU；B 赠品件数向下取整，零头回流 A。</li>
+      <li>B 赠品须与正价货同票（"N 件 + 折扣行"），并受定价页单 SKU 降价上限约束；下批未订货的 SKU 不加赠。</li>
+      <li>C 类专用赠品单列，按成本计，不计入返点、不抵货款。</li>
+      <li>返点计提基数 = 实付货款（不含抵扣与赠品）；联动模式下取定价页本批预计实付货款。</li>
+      <li>缺货兜底：我方缺货期间有效期暂停；余额可抵任意有货 SKU；协议终止时随保证金结算。</li>
+      <li><b>定价页已按"A 为主 + B 为辅"计算</b>：A 按票面计、B 按货的成本计，β 跟随本页 ④ 的 B 实际占比；开票毛利率默认上调到 27.25%，有效毛利率保持在约 20.82%。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================= 定价页脚本 ================= -->
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id);};
+  function v(id){var x=parseFloat($(id).value);return isNaN(x)?0:x;}
+  function f1(x){return isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:1,maximumFractionDigits:1}):'—';}
+  function f2(x){return isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';}
+  function fi(x){return isFinite(x)?Math.round(x).toLocaleString('zh-CN'):'—';}
+  function pc(x,d){d=d==null?1:d;return isFinite(x)?(x*100).toFixed(d)+'%':'—';}
+  function sg(x){return isFinite(x)?((x>=0?'+':'')+(x*100).toFixed(1)+'%'):'—';}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  var GLOSS=[
+    '新增批采替代率（原 k）：托盘商新增批采中，挤掉一级经销商进货的比例',
+    '公司可承受替代率上限（原 k*）：实际新增批采替代率超过此值，合作比不合作更亏',
+    'B加件货物替代率（原 k_g，g = goods 货）：B 加件多给的货中，挤掉一级经销商进货的比例',
+    '一级经销商替代损失系数 λ（原 g₁）：λ = m₁/(1−m₁)',
+    'B 加件占比 β：货补中用下批指定 SKU 加件兑现的比例，其余 1−β 为 A 抵扣',
+    '增量定毛利率法（原方法2）：原有量维持原价，新增量按指定毛利率，合并成统一价',
+    '一级经销商价差法（原方法4）：托盘商进价比一级经销商低一个合理价差',
+    '货补倒推·达目标（原倒推A）；货补倒推·对标增量定毛利率法（原倒推B）'
+  ];
+
+  var META={
+    cur:{cat:'基准',old:'现价',idea:'维持现批采价，只放量不调价，作为对照',fml:'I = T'},
+    u2027:{cat:'2027 联动',old:'统一价推荐',idea:'直接采用上方 2027 模型推荐涨幅，再按当前货补率与 A/B 兑现结构计算实际单价和渠道替代边界',fml:'I = T × (1 + x₂₀₂₇)'},
+    m2:{cat:'统一价',old:'方法2',idea:'原有批采量维持原价；新增部分按增量毛利率定价，再合并成一个统一价',fml:'I = P₀ + ΔC/(1−m_i)'},
+    m4:{cat:'统一价',old:'方法4',idea:'以一级经销商进价为锚，托盘商进价比一级经销商低一个合理价差',fml:'μ = 1−(1−m₁)/(1−价差)；I = C/(1−μ)'},
+    mu:{cat:'统一价',old:'—',idea:'全部批采量统一按一个目标毛利率定价，不区分原有和新增',fml:'I = C/(1−全量毛利率)'},
+    flr:{cat:'边界',old:'—',idea:'公司最低可接受价：当前新增批采替代率下，合作与不合作毛利持平',fml:'I = C + GM₀ + 新增批采替代率·L'},
+    cap:{cat:'边界',old:'—',idea:'托盘商最高可接受价：私域每元净利降到最低要求',fml:'I = T(1+a)/(1+最低净利)'},
+    rb:{cat:'货补',old:'货补方案',idea:'按开票毛利率定开票价；货补 A 抵扣为主（1−β）、B 指定 SKU 加件为辅（β）',fml:'I = C/(1−开票毛利率)；让利 = I·R(1−β) + C·R·β'},
+    rbB:{cat:'货补参考',old:'原口径',idea:'开票价同货补方案，但货补全部用下批加件兑现（β = 100%），用来对比 A 抵扣多出的成本',fml:'同上，β = 1'},
+    rbv:{cat:'货补参考',old:'—',idea:'只兑现自报类货补项（看最差情况下的让利成本）',fml:'同上，R = 自报项合计'},
+    rbn:{cat:'货补参考',old:'—',idea:'开票价同货补方案，但一分货补都不给',fml:'同上，R = 0'},
+    iA:{cat:'货补倒推',old:'倒推A',idea:'给定货补率和 β，反推开票价，使有效毛利率达到目标',fml:'I = C(1+Rβ)/[1−目标−R(1−β)]'},
+    iB:{cat:'货补倒推',old:'倒推B',idea:'给定货补率和 β，反推开票价，使任意新增批采替代率下都与增量定毛利率法等价',fml:'I = [C(1+Rβ) + GM_增量定毛利率法 + k_g·C·R·β·λ]/[1−R(1−β)]'}
+  };
+
+  var UNUSED=[
+    '<b>与一级经销商同价</b>：托盘商没有价差，就没有动力做私域，合作不成立。相当于一级经销商价差法把价差填 0，可以直接填 0 查看。',
+    '<b>原有量、新增量分开开两个价</b>：违反"统一价"前提；两个价格并存，托盘商可以把低价额度挪去做公域，难以管控。',
+    '<b>阶梯价（量越大单价越低）</b>：本质是返利或货补的另一种形式，已由"货补方案"覆盖。',
+    '<b>按竞品价或市场零售价倒推</b>：缺少可靠的竞品数据，而且与公司成本、渠道替代风险脱钩，无法判断盈亏。',
+    '<b>说明</b>：之前讨论中的方法1、方法3在后续筛选中没有保留；方法5及以后从未有过。本表已取消编号，用名称和上方总览替代。'
+  ];
+  $('unusedList').innerHTML=UNUSED.map(function(x){return '<li>'+x+'</li>';}).join('');
+
+  var FORMULAS=[
+    '成本：C = T(1−m₀)；C₀ = P₀(1−m₀)；ΔC = C − C₀；托盘商原毛利 GM₀ = P₀·m₀',
+    '一级经销商替代损失系数 λ = m₁/(1−m₁)；被抢损失上限 L = ΔC·λ',
+    '开票额 I = C/(1−m_inv)；货补率 R 以开票额为基数；B 加件占比 β，A 抵扣占比 1−β；计提基数为实付货款，无返上返',
+    '票面货补 V = I·R；A 抵扣 V_A = V(1−β)（公司让出票面）；B 加件货成本 C_g = C·R·β（公司付出货的成本）',
+    '公司毛利 GM = I − C − V_A − C_g；有效毛利率 nm = GM/I = m_inv − R(1−β) − Rβ(1−m_inv)',
+    'B加件货物替代损失 = B加件货物替代率 × C_g × λ（只计 B 多给的货；A 不多给货，风险体现在公域每元净利）',
+    'ΔGM = GM − GM₀ − 新增批采替代率 × L − B加件货物替代损失',
+    '公司可承受替代率上限 = (GM − GM₀ − B加件货物替代损失) / L',
+    '票面涨幅 = I/T − 1；实际单价涨幅 p = I[1−R(1−β)] / [T(1+Rβ)] − 1',
+    '托盘商单位成本倍数 u = I[1−R(1−β)] / [C(1+Rβ)]；公域每元净利 b = (1+π₁)/[(1−m₁)u] − 1；私域每元净利 a′ = (1+a)/(1+p) − 1；进价比一级经销商便宜 = 1 − (1−m₁)u',
+    '统一价·增量定毛利率法 I = P₀ + ΔC/(1−m_i)；一级经销商价差法 μ = 1 − (1−m₁)/(1−价差)，I = C/(1−μ)；全量目标毛利率法 I = C/(1−全量毛利率)',
+    '边界·盈亏平衡底价 I = C + GM₀ + 新增批采替代率·L（ΔGM = 0）；边界·托盘商接受上限 I = T(1+a)/(1+最低净利)',
+    '货补倒推·达目标 I = C(1+Rβ)/[1−目标−R(1−β)]；货补倒推·对标增量定毛利率法 I = [C(1+Rβ) + GM_增量定毛利率法 + B加件货物替代率·C·R·β·λ]/[1−R(1−β)]；β = 1 时退化为原公式',
+    'SKU（B 加件部分）：B 加件额 = 本批开票额 × R × β；跟随返点页时件数取返点页 ④；否则 e = ⌊min(分到货补, 上限)/单价⌋，超限和零头回流 A',
+    'SKU 摊薄后开票单价 = 单价·q/(q+e)；降价幅度 d = e/(q+e)',
+    'SKU 行毛利率 = 1 − (1+e/q)(1−m_inv)；SKU 公域每元净利 b_j = (1+π₁)(1−m_inv)/[(1−m₁)(1−d)] − 1',
+    '单 SKU 降价上限 d_max = 1 − (1−m_inv)/(1−底线毛利率)；等价于 e/q ≤ (1−底线)/(1−m_inv) − 1',
+    '跟随模式：β = 返点页 B 实际兑现 ÷ 返点总额。β 只取决于定价页参数，不受定价页 β 本身影响，所以两页联动一轮就收敛',
+    '2027 联动方案：统一涨幅 x 直接取年度模型推荐值；调整后采购量取私域与公域销量变化后的加权采购额；票面涨幅仍为 x，实际单价涨幅按 A 抵扣与 B 加件占比 β 折算；公司可承受替代率上限按联动后的公司毛利、B加件货物替代损失及新增批采替代损失计算'
+  ];
+  $('fmls').innerHTML=FORMULAS.map(function(x,i){return '<div class="formula">'+(i+1)+'. '+x+'</div>';}).join('');
+
+  var items=[
+    {n:'年度总批采额达标货补',r:2,v:true},
+    {n:'公域控价货补',r:3,v:true},
+    {n:'私域出货占比货补',r:2,v:false}
+  ];
+  var skuUid=0;function newSkuId(){skuUid++;return 'S'+skuUid;}
+  var skus=[
+    {id:newSkuId(),n:'SKU-A 主力款',s:40,pr:199,al:40},
+    {id:newSkuId(),n:'SKU-B',s:30,pr:129,al:30},
+    {id:newSkuId(),n:'SKU-C',s:20,pr:89,al:20},
+    {id:newSkuId(),n:'SKU-D',s:10,pr:59,al:10}
+  ];
+
+  function bindRows(tb,arr,rerender){
+    tb.querySelectorAll('input').forEach(function(el){
+      var h=function(){
+        var i=+el.getAttribute('data-i'),key=el.getAttribute('data-k');
+        if(el.type==='checkbox')arr[i][key]=el.checked;
+        else if(el.type==='number')arr[i][key]=parseFloat(el.value)||0;
+        else arr[i][key]=el.value;
+        calc();
+      };
+      el.addEventListener('input',h);el.addEventListener('change',h);
+    });
+    tb.querySelectorAll('button[data-del]').forEach(function(b){
+      b.addEventListener('click',function(){arr.splice(+b.getAttribute('data-del'),1);rerender();calc();});
+    });
+  }
+  function renderItems(){
+    var tb=$('rbTable').querySelector('tbody');tb.innerHTML='';
+    items.forEach(function(it,i){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><input type="text" data-i="'+i+'" data-k="n" value="'+esc(it.n)+'"></td>'+
+        '<td><input type="number" data-i="'+i+'" data-k="r" value="'+it.r+'" step="0.5" style="width:64px"></td>'+
+        '<td style="text-align:center"><input type="checkbox" data-i="'+i+'" data-k="v" '+(it.v?'checked':'')+'></td>'+
+        '<td><button class="x" data-del="'+i+'">✕</button></td>';
+      tb.appendChild(tr);
+    });
+    bindRows(tb,items,renderItems);
+  }
+  function renderSkus(){
+    var tb=$('skuIn').querySelector('tbody');tb.innerHTML='';
+    skus.forEach(function(it,i){
+      var tr=document.createElement('tr');
+      tr.innerHTML='<td><input type="text" data-i="'+i+'" data-k="n" value="'+esc(it.n)+'"></td>'+
+        '<td><input type="number" data-i="'+i+'" data-k="s" value="'+it.s+'" step="1" style="width:60px"></td>'+
+        '<td><input type="number" data-i="'+i+'" data-k="pr" value="'+it.pr+'" step="1" style="width:70px"></td>'+
+        '<td><input type="number" data-i="'+i+'" data-k="al" value="'+it.al+'" step="1" style="width:60px"></td>'+
+        '<td><button class="x" data-del="'+i+'">✕</button></td>';
+      tb.appendChild(tr);
+    });
+    bindRows(tb,skus,renderSkus);
+  }
+  $('addRb').addEventListener('click',function(){items.push({n:'新货补项',r:1,v:false});renderItems();calc();});
+  $('addSku').addEventListener('click',function(){skus.push({id:newSkuId(),n:'新SKU',s:0,pr:100,al:0});renderSkus();calc();});
+  $('evenSku').addEventListener('click',function(){
+    var S=skus.reduce(function(t,x){return t+x.s;},0)||1;
+    skus.forEach(function(x){x.al=Math.round(x.s/S*1000)/10;});renderSkus();calc();
+  });
+
+  var lastText='';
+
+  function calc(){
+    var P0=v('p0'),T=v('tot'),m0=v('m0')/100,m1=v('m1')/100,mi=v('mi')/100,gap=v('gap')/100,
+        mu=v('mu')/100,amin=v('amin')/100,
+        mInv=v('minv')/100,tgt=v('tgt')/100,a=v('a')/100,pi1=v('pi1')/100,
+        cr=v('k')/100,crg=v('kg')/100,
+        bt=v('bt'),scale=v('scale')/100,floor=v('floor')/100;
+
+    var C=T*(1-m0),C0=P0*(1-m0),dC=C-C0,GM0=P0*m0,lam=m1/(1-m1),L=dC*lam;
+    var Rall=0,Runv=0;
+    items.forEach(function(it){var r=it.r/100;Rall+=r;if(!it.v)Runv+=r;});
+    $('rbSum').innerHTML='合计 <b style="color:#fff">'+pc(Rall)+'</b>，其中自报 <b class="bad">'+pc(Runv)+'</b>';
+
+    /* ---- β：B 加件占比 ---- */
+    var REB=window.__REBATE||null,wantFollow=$('bFollow').checked,follow=wantFollow&&!!REB&&isFinite(REB.beta);
+    var beta=follow?Math.min(1,Math.max(0,REB.beta)):Math.min(1,Math.max(0,v('bShare')/100));
+    $('bShare').readOnly=follow;
+    if(follow)$('bShare').value=+(beta*100).toFixed(2);
+    $('bInfo').innerHTML='当前 β = <b style="color:#fff">'+pc(beta,2)+'</b>（'+(follow?'跟随返点页 ④ B 实际占比':(wantFollow?'返点页尚未就绪，暂用手填值':'手填'))+'）｜A 抵扣占 <b style="color:#fff">'+pc(1-beta,2)+'</b>';
+
+    function mk(o){
+      var I=o.inv,R=o.R||0,bb=o.bb!=null?o.bb:beta;
+      var V=I*R,VA=V*(1-bb),Cg=C*R*bb,K=VA+Cg,GM=I-C-K,nm=I>0?GM/I:NaN,leak=crg*Cg*lam;
+      var payF=1-R*(1-bb),gF=1+R*bb;
+      var up=I/T-1,p=I*payF/(T*gF)-1,u=I*payF/(C*gF);
+      var b=(1+pi1)/((1-m1)*u)-1,aN=(1+a)/(1+p)-1,cheaper=1-(1-m1)*u;
+      var be=L>0?(GM-GM0-leak)/L:NaN,d=GM-GM0-cr*L-leak;
+      return {key:o.key,name:o.name,inv:I,invM:1-C/I,R:R,bb:bb,V:V,VA:VA,Cg:Cg,K:K,GM:GM,nm:nm,leak:leak,up:up,p:p,b:b,aN:aN,cheaper:cheaper,be:be,d:d,
+        cls:o.cls||'',chart:!!o.chart,color:o.color||'#fff',
+        okC:d>=-1e-6,okT:aN>=amin-1e-9};
+    }
+    var invR=C/(1-mInv),m2I=P0+dC/(1-mi),GM2=m2I-C,mu4=1-(1-m1)/(1-gap);
+    var denA=1-tgt-Rall*(1-beta),denB=1-Rall*(1-beta);
+    var S=[
+      mk({key:'cur',name:'现价（不调整）',inv:T,chart:true,color:'#94a3b8'}),
+      mk({key:'m2',name:'统一价·增量定毛利率法',inv:m2I,chart:true,color:'#22c55e'}),
+      mk({key:'m4',name:'统一价·一级经销商价差法',inv:C/(1-mu4),chart:true,color:'#a78bfa'}),
+      mk({key:'mu',name:'统一价·全量目标毛利率法',inv:C/(1-mu),chart:true,color:'#facc15'}),
+      mk({key:'flr',name:'边界·盈亏平衡底价（公司最低价）',inv:C+GM0+cr*L,cls:'bd'}),
+      mk({key:'cap',name:'边界·托盘商接受上限（托盘商最高价）',inv:T*(1+a)/(1+amin),cls:'bd'}),
+      mk({key:'rb',name:'货补方案 · A 抵扣为主 + B 加件为辅',inv:invR,R:Rall,cls:'hl',chart:true,color:'#ef4444'}),
+      mk({key:'rbB',name:'货补方案 · 全部加件兑现（原口径，参考）',inv:invR,R:Rall,bb:1,cls:'ref'}),
+      mk({key:'rbv',name:'货补方案 · 只兑现自报项（参考）',inv:invR,R:Runv,cls:'ref'}),
+      mk({key:'rbn',name:'货补方案 · 不给货补（参考）',inv:invR,cls:'ref'}),
+      mk({key:'iA',name:'货补倒推·达目标有效毛利率',inv:denA>0?C*(1+Rall*beta)/denA:NaN,R:Rall,cls:'hl',chart:true,color:'#f472b6'}),
+      mk({key:'iB',name:'货补倒推·对标增量定毛利率法',inv:denB>0?(C*(1+Rall*beta)+GM2+crg*C*Rall*beta*lam)/denB:NaN,R:Rall,cls:'hl',chart:true,color:'#38bdf8'})
+    ];
+    var U=window.__UNIFIED_PRICING||null, linked2027=null;
+    if(U && isFinite(U.x)){
+      // 使用 2027 模型的销量弹性调整后采购量；单位涨幅仍只取推荐价 x，不把销量变化误算成涨价。
+      var adjBuy=isFinite(U.volumeWeightedBuy)?U.volumeWeightedBuy:T;
+      var C2027=adjBuy*(1-m0),I2027=adjBuy*(1+U.x),V2027=I2027*Rall,VA2027=V2027*(1-beta),Cg2027=C2027*Rall*beta,K2027=VA2027+Cg2027,GM2027=I2027-C2027-K2027;
+      var payF2027=1-Rall*(1-beta),gF2027=1+Rall*beta,p2027=(1+U.x)*payF2027/gF2027-1;
+      var u2027=(1+U.x)*payF2027/((1-m0)*gF2027),b2027=(1+pi1)/((1-m1)*u2027)-1,aN2027=(1+a)/(1+p2027)-1;
+      var L2027=(C2027-C0)*lam,leak2027=crg*Cg2027*lam,be2027=L2027>0?(GM2027-GM0-leak2027)/L2027:NaN,d2027=GM2027-GM0-cr*L2027-leak2027;
+      linked2027={key:'u2027',name:'2027统一价推荐方案（联动）',inv:I2027,invM:I2027>0?1-C2027/I2027:NaN,R:Rall,bb:beta,V:V2027,VA:VA2027,Cg:Cg2027,K:K2027,GM:GM2027,nm:I2027>0?GM2027/I2027:NaN,leak:leak2027,up:U.x,p:p2027,u:u2027,b:b2027,aN:aN2027,cheaper:1-(1-m1)*u2027,be:be2027,d:d2027,L:L2027,cls:'hl',chart:true,color:'#22d3ee',okC:d2027>=-1e-6,okT:aN2027>=amin-1e-9};
+      S.push(linked2027);
+    }
+    var by={};S.forEach(function(s){by[s.key]=s;});
+    var w=by.rb,wB=by.rbB,iB=by.iB,m2=by.m2,iA=by.iA;
+    var beNoLeak=L>0?(w.GM-GM0)/L:NaN;
+    var lo=by.flr.inv,hi=by.cap.inv,viable=lo<=hi+1e-9;
+    var bothOK=S.filter(function(s){return s.okC&&s.okT&&s.key!=='flr'&&s.key!=='cap'&&s.cls!=='ref';});
+
+    function yn(x){return x?'<span class="tag ok">✓</span>':'<span class="tag bad">✗</span>';}
+    var hmt='<thead><tr><th>类别</th><th class="l">方案</th><th class="l">原名称</th><th class="l">定价思路</th><th class="l">开票额公式</th><th>开票额</th><th>票面涨幅</th><th>公司</th><th>托盘商</th></tr></thead><tbody>';
+    S.forEach(function(s){
+      var m=META[s.key];
+      hmt+='<tr class="'+s.cls+'"><td>'+m.cat+'</td><td class="l"><b>'+s.name+'</b></td><td class="l">'+m.old+'</td><td class="l">'+m.idea+'</td><td class="l" style="font-family:Consolas,monospace;font-size:12px">'+m.fml+'</td><td>'+f1(s.inv)+'</td><td>'+sg(s.up)+'</td><td>'+yn(s.okC)+'</td><td>'+yn(s.okT)+'</td></tr>';
+    });
+    $('methTable').innerHTML=hmt+'</tbody>';
+
+    /* ---- SKU：B 加件部分 ---- */
+    var dmax=Math.max(0,1-(1-mInv)/(1-floor)),rmax=dmax<1?dmax/(1-dmax):Infinity;
+    var perN=rmax>0?Math.ceil(1/rmax-1e-9):Infinity;
+    var useReb=!!(follow&&REB.linked&&REB.rows);
+    var sumS=0,sumA=0;
+    skus.forEach(function(x){sumS+=x.s;sumA+=x.al;});
+    $('skuSum').innerHTML='份额合计 '+sumS.toFixed(1)+'%｜'+(useReb?'跟随返点页：B 件数取自返点页 ④，"货补分配%"暂不生效':'分配合计 <b class="'+(Math.abs(sumA-100)<0.05?'ok':'bad')+'">'+sumA.toFixed(1)+'%</b>');
+    var Vb=bt*Rall,VbB=Vb*beta,NB=bt*scale,over=0,maxD=0,carryAll=0,givenAll=0,skuRows=[],dEven=Rall*beta/(1+Rall*beta);
+    var hs='<thead><tr><th>SKU</th><th>下批票面额</th><th>单价(元)</th><th>原订件数</th><th>B 加件货值</th><th>不封顶降价</th><th>加件数</th><th>执行降价</th><th>摊薄后单价(元)</th><th>行毛利率</th><th>公域每元净利</th><th>回流A(万)</th><th>状态</th></tr></thead><tbody>';
+    skus.forEach(function(x){
+      var share=sumS>0?x.s/sumS:0,Sj=NB*share,pr=x.pr>0?x.pr:0;
+      var q=pr>0?Math.round(Sj*10000/pr):0;
+      var Vj,e,carry,dRaw,capped,rr=null;
+      if(useReb){
+        rr=REB.rows[x.id]||null;
+        e=rr?Math.max(0,Math.floor(rr.pcs||0)):0;
+        Vj=e*pr/10000;carry=0;
+        dRaw=(Sj+Vj)>0?Vj/(Sj+Vj):0;capped=!!(rr&&rr.capHit);
+      }else{
+        Vj=VbB*x.al/100;
+        dRaw=(Sj+Vj)>0?Vj/(Sj+Vj):0;
+        var cap=Sj*rmax,give=Math.min(Vj,cap);
+        e=(pr>0&&q>0)?Math.max(0,Math.floor(give*10000/pr+1e-9)):0;
+        carry=Math.max(0,Vj-e*pr/10000);
+        capped=dRaw>dmax+1e-9;
+      }
+      var given=e*pr/10000;givenAll+=given;
+      var d=(q+e)>0?e/(q+e):0,np=(q+e)>0?pr*q/(q+e):NaN;
+      var lm=q>0?1-(1+e/q)*(1-mInv):NaN;
+      var bj=(1+pi1)*(1-mInv)/((1-m1)*(1-d))-1;
+      if(capped)over++;
+      carryAll+=carry;maxD=Math.max(maxD,d);
+      var st;
+      if(useReb&&!(rr&&rr.ok))st='<span class="tag mute">'+esc(rr?rr.st:'待同步')+'</span>';
+      else st=capped?'<span class="tag bad">已封顶</span>':(d>dEven*1.2?'<span class="tag warn">偏集中</span>':'<span class="tag ok">正常</span>');
+      skuRows.push({id:x.id,n:x.n,Sj:Sj,pr:pr,q:q,Vj:Vj,dRaw:dRaw,e:e,d:d,np:np,lm:lm,bj:bj,carry:carry});
+      hs+='<tr><td>'+esc(x.n)+'</td><td>'+f1(Sj)+'</td><td>'+f2(pr)+'</td><td>'+fi(q)+'</td><td>'+f1(Vj)+'</td><td class="'+(capped?'bad':'')+'">'+pc(dRaw)+'</td><td><b>'+fi(e)+'</b></td><td><b>'+pc(d)+'</b></td><td>'+f2(np)+'</td><td class="'+(lm<floor-1e-9?'bad':'')+'">'+pc(lm)+'</td><td class="'+(bj>w.b*1.15?'bad':'')+'">'+pc(bj)+'</td><td>'+f2(carry)+'</td><td>'+st+'</td></tr>';
+    });
+    $('skuTable').innerHTML=hs+'</tbody>';
+    $('skuNote').innerHTML='本批票面货补 '+f1(Vb)+' 万 = A 抵扣 '+f1(Vb*(1-beta))+' 万 ＋ B 加件 '+f1(VbB)+' 万（β '+pc(beta,2)+'）。B 实际加件 <b>'+f1(givenAll)+' 万</b>（货的成本 '+f1(givenAll*(1-mInv))+' 万）'+
+      (useReb?'，件数取自返点页 ④':'，超限和零头 '+f1(carryAll)+' 万回流 A')+'。下批票面 '+f1(NB)+' 万。单 SKU 降价上限 '+pc(dmax)+'，即<b>每买 '+(isFinite(perN)?perN:'—')+' 件最多加 1 件</b>。';
+
+    var exLm=1-2*(1-mInv),exB=(1+pi1)*(1-mInv)/((1-m1)*0.5)-1;
+
+    function kpi(t,val,d,c,st){return '<div class="kpi"><div class="t">'+t+'</div><div class="v '+c+'"'+(st?' style="'+st+'"':'')+'>'+val+'</div><div class="d">'+d+'</div></div>';}
+    $('kpis').innerHTML=
+      kpi('统一价可谈区间（开票额，万）',viable?f1(lo)+' ~ '+f1(hi):'无可行区间',viable?'票面涨幅 '+sg(lo/T-1)+' ~ '+sg(hi/T-1):'底价 '+f1(lo)+' 高于上限 '+f1(hi),viable?'ok':'bad','font-size:18px')+
+      kpi('原固定毛利率货补方案 有效毛利率',pc(w.nm,2),'开票 '+pc(mInv,2)+'，货补 '+pc(Rall)+'，β '+pc(beta,1)+'｜原口径 '+pc(wB.nm,2),w.nm<tgt?'bad':'ok')+
+      kpi('原固定毛利率货补方案 公司可承受替代率上限',pc(w.be),'B加件货物未发生替代时 '+pc(beNoLeak)+'｜B加件货物替代率 '+pc(crg,0)+'｜当前新增批采替代率 '+pc(cr,0),w.be<cr?'bad':'ok')+
+      kpi('原固定毛利率货补方案 票面 / 实际单价涨幅',sg(w.up)+' / '+sg(w.p),'托盘商公域每元净利 '+pc(w.b),'warn')+
+      kpi('单 SKU 最大执行降价',pc(maxD),'上限 '+pc(dmax)+'｜封顶 '+over+' 个｜回流A '+f1(carryAll)+' 万',over>0?'bad':'ok');
+
+    var h='<thead><tr><th>方案</th><th>开票额</th><th>开票毛利率</th><th>票面货补</th><th>A 抵扣</th><th>B 货成本</th><th>公司毛利</th><th>有效毛利率</th><th>票面涨幅</th><th>实际单价涨幅</th><th>B加件货物替代损失</th><th>公司可承受替代率上限</th><th>ΔGM @新增批采替代率 '+pc(cr,0)+'</th></tr></thead><tbody>';
+    S.forEach(function(s){
+      h+='<tr class="'+s.cls+'"><td>'+s.name+'</td><td>'+f1(s.inv)+'</td><td>'+pc(s.invM)+'</td><td>'+f1(s.V)+'</td><td>'+f1(s.VA)+'</td><td>'+f1(s.Cg)+'</td><td>'+f1(s.GM)+'</td><td><b>'+pc(s.nm,2)+'</b></td><td>'+sg(s.up)+'</td><td>'+sg(s.p)+'</td><td>'+f1(s.leak)+'</td><td class="'+(s.be>=cr-1e-9?'ok':'bad')+'">'+pc(s.be)+'</td><td class="'+(s.d>=-1e-6?'ok':'bad')+'">'+f1(s.d)+'</td></tr>';
+    });
+    $('scTable').innerHTML=h+'</tbody>';
+
+    var hm='<thead><tr><th>方案</th><th>实际单价涨幅 p</th><th>进价比一级经销商便宜</th><th>私域每元净利</th><th>公域每元净利</th><th>公域 − 私域</th></tr></thead><tbody>';
+    S.forEach(function(s){
+      hm+='<tr class="'+s.cls+'"><td>'+s.name+'</td><td>'+sg(s.p)+'</td><td>'+pc(s.cheaper)+'</td><td class="'+(s.okT?'':'bad')+'">'+pc(s.aN)+'</td><td class="'+(s.b>0?'warn':'ok')+'">'+pc(s.b)+'</td><td>'+pc(s.b-s.aN)+'</td></tr>';
+    });
+    $('mcTable').innerHTML=hm+'</tbody>';
+
+    var ha='<thead><tr><th>货补项</th><th>比例</th><th>年度票面货补</th><th>其中 A 抵扣</th><th>其中 B 货成本</th><th>公司让利合计</th><th>可核验</th><th>最差情形处理</th></tr></thead><tbody>';
+    items.forEach(function(it){
+      var r=it.r/100,va=invR*r*(1-beta),cb=C*r*beta;
+      ha+='<tr><td>'+esc(it.n)+'</td><td>'+it.r+'%</td><td>'+f1(invR*r)+'</td><td>'+f1(va)+'</td><td>'+f1(cb)+'</td><td>'+f1(va+cb)+'</td><td>'+(it.v?'<span class="tag ok">可核验</span>':'<span class="tag bad">自报</span>')+'</td><td class="l">'+(it.v?'对方会表面达标，按全额计；用公司数据核定，违规的扣减下批抵扣或加件':'无法核验，等于无条件让利；建议取消并入开票价，或改为可核验指标')+'</td></tr>';
+    });
+    $('auditTable').innerHTML=ha+'</tbody>';
+
+    drawChart(S.filter(function(s){return s.chart&&isFinite(s.inv);}),L,GM0,cr);
+
+    var c=[];
+    c.push('统一价可谈区间：公司底价 <b>'+f1(lo)+' 万</b>（票面 '+sg(lo/T-1)+'，新增批采替代率 '+pc(cr,0)+' 下刚好不亏）～ 托盘商上限 <b>'+f1(hi)+' 万</b>（票面 '+sg(hi/T-1)+'，私域每元净利 = '+pc(amin)+'）。'+(viable?'':'<span class="bad">底价高于上限，当前假设下统一价谈不拢，只能降低新增批采替代率（例如约束货物流向公域）或接受更低毛利。</span>'));
+    c.push('双方都能接受的方案：'+(bothOK.length?bothOK.map(function(s){return '<b>'+s.name+'</b>';}).join('、'):'<span class="bad">无</span>')+'。');
+    c.push('执行方式：货补 = <b>A 抵扣为主（'+pc(1-beta,1)+'）＋ B 指定 SKU 加件为辅（'+pc(beta,1)+'）</b>'+(follow?'，β 跟随返点页 ④':'，β 为手填')+'。A 部分公司让出票面 <b>'+f1(w.VA)+' 万</b>，B 部分公司付出货的成本 <b>'+f1(w.Cg)+' 万</b>，合计让利 '+f1(w.K)+' 万（票面货补 '+f1(w.V)+' 万）。返点计提基数为实付货款，无返上返。');
+    c.push('货补方案有效毛利率 <b>'+pc(w.nm,2)+'</b>（开票毛利率 '+pc(mInv,2)+'）。如果全部用加件兑现（原口径），有效毛利率是 '+pc(wB.nm,2)+'，相差 '+((wB.nm-w.nm)*100).toFixed(2)+' 个百分点，这就是 A 抵扣按票面计多出的成本。票面涨幅 '+sg(w.up)+'，托盘商实际单价涨幅 '+sg(w.p)+'，公域每元净利 '+pc(w.b)+'。');
+    c.push('货补方案公司可承受替代率上限：B加件货物未发生替代时 '+pc(beNoLeak)+'，按当前B加件货物替代率 '+pc(crg,0)+' 为 <b>'+pc(w.be)+'</b>。当前新增批采替代率 '+pc(cr,0)+'，'+(w.d>=0?'<span class="ok">比不合作多赚 '+f1(w.d)+' 万</span>':'<span class="bad">比不合作少赚 '+f1(-w.d)+' 万</span>')+'。');
+    c.push('B 加件的极端例子（1 件变 2 件、每件半价）：降价 50%，该行公司毛利率 <b class="bad">'+pc(exLm)+'</b>，托盘商卖进公域每元净利 <b class="bad">'+pc(exB)+'</b>，极易被砸价，所以 B 必须受单 SKU 上限约束。');
+    c.push('SKU 摊薄上限 '+pc(dmax)+'（底线毛利率 '+pc(floor)+'），即每买 '+(isFinite(perN)?perN:'—')+' 件最多加 1 件。当前最大执行降价 '+pc(maxD)+'，'+(over>0?'<span class="bad">'+over+' 个 SKU 已封顶</span>，':'没有 SKU 触顶，')+(useReb?'B 件数取自返点页 ④，封顶部分已回流 A。':'超限和零头合计 '+f1(carryAll)+' 万回流 A。'));
+    if(Runv>0)c.push('其中 <b class="bad">'+pc(Runv)+'</b> 依赖对方自报，等于无条件让利，年度让利约 '+f1(invR*Runv*(1-beta)+C*Runv*beta)+' 万。建议并入开票价，或改为可核验指标。');
+    c.push('货补倒推·达目标：有效毛利率要达到 '+pc(tgt)+'，开票毛利率需 '+pc(iA.invM,2)+'（票面 '+sg(iA.up)+'，实际单价 '+sg(iA.p)+'），公司可承受替代率上限 '+pc(iA.be)+'。');
+    c.push('货补倒推·对标增量定毛利率法：要在任意新增批采替代率下与增量定毛利率法等价，开票毛利率需 <b>'+pc(iB.invM,2)+'</b>（开票额 '+f1(iB.inv)+' 万，票面 '+sg(iB.up)+'，实际单价 '+sg(iB.p)+'），公司可承受替代率上限 '+pc(iB.be)+'，与增量定毛利率法的 '+pc(m2.be)+' 相同。');
+    c.push('执行规则：① A 抵扣在下批开票时扣减，对方任选 SKU，不退现金；② B 加件只放在返点页指定的 SKU 上，占比不超过封顶；③ 单 SKU 每 '+(isFinite(perN)?perN:'—')+' 件最多加 1 件，超出和零头回流 A；④ 不在临期、清仓、滞销或公域价格锚 SKU 上加件；⑤ 摊薄后单价不要明显偏低（请财务确认）。');
+    $('concl').innerHTML=c.map(function(x){return '<li>'+x+'</li>';}).join('');
+
+    function strip(x){var d=document.createElement('div');d.innerHTML=x;return d.textContent;}
+    var t=[];
+    t.push('# 私域托盘商批采定价 · 货补（A 抵扣为主 + B 指定 SKU 加件为辅）测算','');
+    t.push('## 名称对照');
+    GLOSS.forEach(function(x){t.push('- '+x);});
+    t.push('');
+    t.push('## 口径');
+    t.push('- 毛利率 = 1 − 成本/批采价');
+    t.push('- 货补 = A 抵扣为主（1−β，公司让出票面）+ B 指定 SKU 加件为辅（β，公司付出货的成本）；返点计提基数为实付货款，无返上返');
+    t.push('- B加件货物替代损失只计 B 多给的货；定价方法编号已取消，统一用名称');
+    t.push('');
+    t.push('## 输入');
+    t.push('- 原批采 '+P0+'；新批采总额 '+T+'；托盘商现毛利率 m₀ '+pc(m0)+'；一级经销商毛利率 m₁ '+pc(m1));
+    t.push('- 增量部分毛利率 m_i '+pc(mi)+'；一级经销商合理价差 '+pc(gap)+'；全量目标毛利率 '+pc(mu)+'；托盘商私域最低每元净利 '+pc(amin));
+    t.push('- 开票毛利率 '+pc(mInv,2)+'；货补合计 '+pc(Rall)+'（自报 '+pc(Runv)+'）；B 加件占比 β '+pc(beta,2)+'（'+(follow?'跟随返点页':'手填')+'）；目标有效毛利率 '+pc(tgt));
+    t.push('- a '+pc(a)+'；π₁ '+pc(pi1)+'；新增批采替代率 '+pc(cr,0)+'；B加件货物替代率 '+pc(crg,0)+'；本批开票额 '+bt+'；下批规模 '+pc(scale,0)+'；底线毛利率 '+pc(floor));
+    t.push('- 货补项：'+items.map(function(x){return x.n+' '+x.r+'%（'+(x.v?'可核验':'自报')+'）';}).join('；'));
+    t.push('');
+    t.push('## 中间量');
+    t.push('- C='+f1(C)+'；C₀='+f1(C0)+'；ΔC='+f1(dC)+'；GM₀='+f1(GM0)+'；一级经销商替代损失系数 λ='+lam.toFixed(4)+'；L='+f1(L)+'；d_max='+pc(dmax)+'；每 '+(isFinite(perN)?perN:'—')+' 件最多加 1 件');
+    t.push('- 统一价可谈区间：'+f1(lo)+' ~ '+f1(hi)+' 万（'+(viable?'可行':'无可行区间')+'）');
+    t.push('- 货补方案有效毛利率 '+pc(w.nm,2)+'；原口径（全部加件）'+pc(wB.nm,2));
+    t.push('');
+    t.push('## 定价方法总览');
+    t.push('| 类别 | 方案 | 原名称 | 定价思路 | 开票额公式 | 开票额 | 票面涨幅 | 公司可接受 | 托盘商可接受 |');
+    t.push('|---|---|---|---|---|---|---|---|---|');
+    S.forEach(function(s){var m=META[s.key];t.push('| '+m.cat+' | '+s.name+' | '+m.old+' | '+m.idea+' | '+m.fml+' | '+f1(s.inv)+' | '+sg(s.up)+' | '+(s.okC?'✓':'✗')+' | '+(s.okT?'✓':'✗')+' |');});
+    t.push('');
+    t.push('## 未纳入测算的定价思路及原因');
+    UNUSED.forEach(function(x){t.push('- '+strip(x));});
+    t.push('');
+    t.push('## 方案对比');
+    t.push('| 方案 | 开票额 | 票面货补 | A 抵扣 | B 货成本 | 公司毛利 | 有效毛利率 | 票面涨幅 | 实际单价涨幅 | 私域每元净利 | 公域每元净利 | B加件货物替代损失 | 公司可承受替代率上限 | ΔGM@当前新增批采替代率 |');
+    t.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    S.forEach(function(s){t.push('| '+s.name+' | '+f1(s.inv)+' | '+f1(s.V)+' | '+f1(s.VA)+' | '+f1(s.Cg)+' | '+f1(s.GM)+' | '+pc(s.nm,2)+' | '+sg(s.up)+' | '+sg(s.p)+' | '+pc(s.aN)+' | '+pc(s.b)+' | '+f1(s.leak)+' | '+pc(s.be)+' | '+f1(s.d)+' |');});
+    t.push('');
+    t.push('## 下批 SKU 加件摊薄（B 加件部分，件数取整）');
+    t.push('| SKU | 下批票面 | 单价 | 原订件数 | B 加件货值 | 不封顶降价 | 加件数 | 执行降价 | 摊薄后单价 | 行毛利率 | 公域每元净利 | 回流A |');
+    t.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
+    skuRows.forEach(function(r){t.push('| '+r.n+' | '+f1(r.Sj)+' | '+f2(r.pr)+' | '+fi(r.q)+' | '+f1(r.Vj)+' | '+pc(r.dRaw)+' | '+fi(r.e)+' | '+pc(r.d)+' | '+f2(r.np)+' | '+pc(r.lm)+' | '+pc(r.bj)+' | '+f2(r.carry)+' |');});
+    t.push('');
+    t.push('## 换算与测算逻辑');
+    FORMULAS.forEach(function(x,i){t.push((i+1)+'. '+x);});
+    t.push('');
+    t.push('## 结论');
+    $('concl').querySelectorAll('li').forEach(function(li){t.push('- '+li.textContent);});
+    lastText=t.join('\n');
+
+    window.__PRICING={Rall:Rall,Runv:Runv,bt:bt,paidBase:v('paidBase'),mInv:mInv,floor:floor,dmax:dmax,rmax:rmax,perN:perN,
+      nm:w.nm,nmFull:wB.nm,beta:beta,follow:follow,tgt:tgt,
+      unified:linked2027?{x:U.x,invoice:linked2027.inv,faceUplift:linked2027.up,actualUplift:linked2027.p,breakEvenCannibalism:linked2027.be,deltaGM:linked2027.d,effectiveMargin:linked2027.nm,rebateRate:Rall,beta:beta,leakLoss:linked2027.leak}:null,
+      skus:skuRows.map(function(r){return {id:r.id,n:r.n,pr:r.pr,q:r.q};})};
+    if(typeof window.__onPricing==='function'){try{window.__onPricing();}catch(err){console.error(err);}}
+  }
+
+  /* 返点页回调：β 或 B 件数变化时重算一次（签名相同则不再重算，防循环） */
+  var rebSig='';
+  window.__onRebate=function(){
+    var r=window.__REBATE;if(!r||!$('bFollow').checked)return;
+    if(r.sig===rebSig)return;
+    rebSig=r.sig;calc();
+  };
+
+  function drawChart(S,L,GM0,cr){
+    var W=820,H=330,pl=64,pr=20,pt=16,pb=40,ys=[0];
+    S.forEach(function(s){var y0=s.GM-GM0-s.leak;ys.push(y0,y0-L);});
+    var ymin=Math.min.apply(null,ys),ymax=Math.max.apply(null,ys),pad=(ymax-ymin)*0.08||100;ymin-=pad;ymax+=pad;
+    function X(x){return pl+x*(W-pl-pr);}
+    function Y(y){return pt+(ymax-y)/(ymax-ymin)*(H-pt-pb);}
+    var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="background:#0f172a;border-radius:8px">';
+    for(var i=0;i<=10;i++){var xx=X(i/10);s+='<line x1="'+xx+'" y1="'+pt+'" x2="'+xx+'" y2="'+(H-pb)+'" stroke="#1f2937"/><text x="'+xx+'" y="'+(H-pb+16)+'" text-anchor="middle">'+(i*10)+'%</text>';}
+    for(var j=0;j<=5;j++){var yv=ymin+(ymax-ymin)*j/5,yy=Y(yv);s+='<line x1="'+pl+'" y1="'+yy+'" x2="'+(W-pr)+'" y2="'+yy+'" stroke="#1f2937"/><text x="'+(pl-6)+'" y="'+(yy+4)+'" text-anchor="end">'+Math.round(yv)+'</text>';}
+    s+='<line x1="'+pl+'" y1="'+Y(0)+'" x2="'+(W-pr)+'" y2="'+Y(0)+'" stroke="#ffffff" stroke-dasharray="4 3"/>';
+    var kk=Math.max(0,Math.min(1,cr));
+    s+='<line x1="'+X(kk)+'" y1="'+pt+'" x2="'+X(kk)+'" y2="'+(H-pb)+'" stroke="#f59e0b" stroke-dasharray="5 4"/><text x="'+(X(kk)+4)+'" y="'+(pt+12)+'">当前新增批采替代率</text>';
+    S.forEach(function(sc){
+      var y0=sc.GM-GM0-sc.leak,sl=isFinite(sc.L)?sc.L:L,y1=y0-sl;
+      s+='<line x1="'+X(0)+'" y1="'+Y(y0)+'" x2="'+X(1)+'" y2="'+Y(y1)+'" stroke="'+sc.color+'" stroke-width="2.2"/>';
+      if(sc.be>=0&&sc.be<=1)s+='<circle cx="'+X(sc.be)+'" cy="'+Y(0)+'" r="4" fill="'+sc.color+'"/><text x="'+X(sc.be)+'" y="'+(Y(0)-8)+'" text-anchor="middle">'+(sc.be*100).toFixed(1)+'%</text>';
+    });
+    s+='<text x="'+(W/2)+'" y="'+(H-4)+'" text-anchor="middle">新增批采替代率：托盘商新增批采挤掉一级经销商进货的比例</text>';
+    s+='<text x="14" y="'+(H/2)+'" transform="rotate(-90 14 '+(H/2)+')" text-anchor="middle">ΔGM（万）</text></svg>';
+    $('chart').innerHTML=s;
+    $('legend').innerHTML=S.map(function(sc){return '<span><i style="background:'+sc.color+'"></i>'+sc.name+'</span>';}).join('');
+  }
+
+  ['p0','tot','m0','m1','mi','gap','mu','amin','minv','tgt','a','pi1','k','kg','bt','paidBase','scale','floor','bShare'].forEach(function(id){$(id).addEventListener('input',calc);});
+  $('bFollow').addEventListener('change',function(){rebSig='';calc();});
+
+  $('dl').addEventListener('click',function(){
+    var box=$('exportBox');box.value=lastText;box.style.display='block';
+    try{
+      var blob=new Blob([lastText],{type:'text/markdown;charset=utf-8'}),url=URL.createObjectURL(blob),el=document.createElement('a');
+      el.href=url;el.download='货补_A抵扣为主B加件为辅_测算逻辑.md';document.body.appendChild(el);el.click();el.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1500);
+      $('dlMsg').textContent='已触发下载；如果环境禁止下载，请复制下方文本。';
+    }catch(e){$('dlMsg').textContent='当前环境不支持下载，请复制下方文本。';}
+  });
+  $('cp').addEventListener('click',function(){
+    var box=$('exportBox');box.value=lastText;box.style.display='block';box.select();
+    var ok=false;try{ok=document.execCommand('copy');}catch(e){}
+    if(!ok&&navigator.clipboard){navigator.clipboard.writeText(lastText).then(function(){$('dlMsg').textContent='已复制';},function(){$('dlMsg').textContent='请手动 Ctrl+C 复制下方文本';});}
+    else $('dlMsg').textContent=ok?'已复制':'请手动 Ctrl+C 复制下方文本';
+  });
+
+  window.__onUnifiedPricing=function(){calc();};
+  renderItems();
+  renderSkus();
+  calc();
+})();
+</script>
+
+<!-- ================= 返点页脚本 ================= -->
+<script>
+(function(){
+  var root=document.getElementById('tab-rebate');
+  function $(id){return document.getElementById(id);}
+  function v(id){var x=parseFloat($(id).value);return isFinite(x)?x:0;}
+  function f2(n){return (isFinite(n)?n:0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function f0(n){return (isFinite(n)?Math.floor(n):0).toLocaleString('zh-CN');}
+  function fp(n,d){d=d==null?1:d;return (isFinite(n)?(n*100).toFixed(d):(0).toFixed(d))+'%';}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function tag(t,c){return '<span class="tag '+c+'">'+t+'</span>';}
+  function PR(){return window.__PRICING||null;}
+
+  var EXTK=['base','recent','actual','floor','expiring','pick'];
+  var EXT_DEF=[
+    {base:18000,recent:19500,actual:185,floor:110,expiring:false,pick:true},
+    {base:20000,recent:41000,actual:120,floor:75,expiring:false,pick:true},
+    {base:20000,recent:21000,actual:70,floor:66,expiring:false,pick:true},
+    {base:15000,recent:15500,actual:57,floor:54,expiring:true,pick:true}
+  ];
+  function blankExt(){return {base:0,recent:0,actual:0,floor:0,expiring:false,pick:true};}
+  var ext={},seeded=false,localSkus=[],lid=0,curRows=[],lastAlloc=[],skuSig='';
+  var gifts=[{name:'试用装 5ml',qty:200,cost:3.5},{name:'品牌周边',qty:50,cost:12}];
+  var ledger=[
+    {m:'2026-12',paid:1000000,useA:0,useB:0,oos:false,end:false},
+    {m:'2027-01',paid:900000,useA:49000,useB:21000,oos:false,end:false},
+    {m:'2027-02',paid:600000,useA:0,useB:0,oos:true,end:false},
+    {m:'2027-03',paid:800000,useA:60000,useB:0,oos:false,end:false},
+    {m:'2027-04',paid:700000,useA:40000,useB:10000,oos:false,end:false},
+    {m:'2027-05',paid:0,useA:0,useB:0,oos:false,end:true}
+  ];
+  var stores={gift:gifts,lg:ledger};
+
+  $('p_start').value=((new Date().getMonth()+1)%12)+1;
+
+  function seedExt(){
+    var p=PR();if(!p)return;
+    p.skus.forEach(function(s,i){
+      if(!ext[s.id])ext[s.id]=seeded?blankExt():Object.assign({},EXT_DEF[i]||blankExt());
+    });
+    seeded=true;
+  }
+  function buildRows(){
+    var p=PR();
+    if($('l_sync').checked&&p){
+      seedExt();
+      return p.skus.map(function(s){return {id:s.id,name:s.n,price:+s.pr||0,q:s.q,linked:true,o:ext[s.id]};});
+    }
+    return localSkus.map(function(s){return {id:s.id,name:s.name,price:+s.price||0,q:null,linked:false,o:s};});
+  }
+
+  function numCell(t,i,k,val,step){return '<td><input type="number" min="0" step="'+(step||'any')+'" data-t="'+t+'" data-i="'+i+'" data-k="'+k+'" value="'+val+'"></td>';}
+  function chkCell(t,i,k,on){return '<td class="c"><input type="checkbox" data-t="'+t+'" data-i="'+i+'" data-k="'+k+'"'+(on?' checked':'')+'></td>';}
+  function txtCell(t,i,k,val,st){return '<td><input type="text" data-t="'+t+'" data-i="'+i+'" data-k="'+k+'" value="'+esc(val)+'"'+(st?' style="'+st+'"':'')+'></td>';}
+
+  function renderSku(){
+    var p=PR();skuSig=p?JSON.stringify(p.skus):'';
+    curRows=buildRows();
+    var sync=$('l_sync').checked;
+    $('sku_body').innerHTML=curRows.length?curRows.map(function(r,i){
+      var o=r.o,h='<tr>';
+      h+=r.linked?('<td>'+esc(r.name)+' '+tag('同步','mute')+'</td><td>'+f2(r.price)+'</td>'):(txtCell('sku',i,'name',o.name)+numCell('sku',i,'price',o.price));
+      ['base','recent','actual','floor'].forEach(function(k){h+=numCell('sku',i,k,o[k]);});
+      h+=chkCell('sku',i,'expiring',o.expiring)+chkCell('sku',i,'pick',o.pick);
+      ['ref','st','dig','cap','pcs','val','net','warn'].forEach(function(k){h+='<td id="sku-'+i+'-'+k+'"></td>';});
+      h+='<td>'+(r.linked?'<span class="sub">在定价页增删</span>':'<button class="x" data-rdel="sku" data-i="'+i+'">✕</button>')+'</td></tr>';
+      return h;
+    }).join(''):'<tr><td colspan="17" class="sub">暂无 SKU</td></tr>';
+    $('sku_add').style.display=sync?'none':'';
+  }
+  function renderGift(){
+    $('gift_body').innerHTML=gifts.map(function(g,i){
+      return '<tr>'+txtCell('gift',i,'name',g.name)+numCell('gift',i,'qty',g.qty,1)+numCell('gift',i,'cost',g.cost)+
+        '<td id="gift-'+i+'-sub"></td><td><button class="x" data-rdel="gift" data-i="'+i+'">✕</button></td></tr>';
+    }).join('');
+  }
+  function renderLg(){
+    $('lg_body').innerHTML=ledger.map(function(r,i){
+      var h='<tr>'+txtCell('lg',i,'m',r.m,'min-width:90px;width:90px');
+      ['paid','useA','useB'].forEach(function(k){h+=numCell('lg',i,k,r[k]);});
+      h+=chkCell('lg',i,'oos',r.oos)+chkCell('lg',i,'end',r.end);
+      ['open','acc','use','exp','close'].forEach(function(k){h+='<td id="lg-'+i+'-'+k+'"></td>';});
+      h+='<td class="l" id="lg-'+i+'-st"></td><td><button class="x" data-rdel="lg" data-i="'+i+'">✕</button></td></tr>';
+      return h;
+    }).join('');
+  }
+  function renderAll(){renderSku();renderGift();renderLg();recalc();}
+
+  function syncParams(){
+    var p=PR(),lk=!!($('l_rate').checked&&p);
+    $('p_rate').readOnly=lk;$('p_paid').readOnly=lk;
+    if(lk){$('p_rate').value=+(p.Rall*100).toFixed(4);$('p_paid').value=Math.round((p.paidBase!=null?p.paidBase:p.bt)*10000);}
+    $('l_info').innerHTML=p?('定价页当前：货补合计 <b>'+fp(p.Rall,2)+'</b>（自报 '+fp(p.Runv,2)+'）｜本批开票额 <b>'+f2(p.bt)+' 万</b>｜本批预计实付货款 <b>'+f2(p.paidBase!=null?p.paidBase:p.bt)+' 万</b>｜开票毛利率 '+fp(p.mInv,2)+'｜单 SKU 降价上限 '+fp(p.dmax)+'（每 '+(isFinite(p.perN)?p.perN:'—')+' 件最多加 1 件）｜定价页 β '+fp(p.beta,2)+'（'+(p.follow?'跟随本页':'手填')+'）。<br>'+
+      (lk?'返点率与计提基数已锁定为定价页数值（万 × 10000 = 元），如需手填请取消勾选。':'已解除锁定，返点率与计提基数可手动填写。')):'未读取到定价页数据。';
+  }
+
+  function promoF(){
+    var s=Math.min(12,Math.max(1,Math.round(v('p_start')))),n=Math.max(1,Math.round(v('p_months'))),t=0,list=[];
+    for(var i=0;i<n;i++){var m=((s-1+i)%12)+1;var f=m===6?v('p_f618'):m===11?v('p_f1111'):1;t+=f;list.push(m+'月×'+f);}
+    return {F:t/n,n:n,list:list};
+  }
+  function evalRow(r){
+    var o=r.o,ref=+o.recent||0,surge=false,ratio=v('p_surgeRatio');
+    if($('p_surgeOn').checked&&o.base>0&&ref>o.base*ratio){ref=o.base*ratio;surge=true;}
+    var clear=$('p_clearOn').checked&&o.floor>0&&o.actual>0&&o.actual<=o.floor*v('p_clearPct')/100;
+    var st,c,ok=false;
+    if(!o.pick){st='未指定';c='mute';}
+    else if(o.expiring){st='临期·不可指定';c='bad';}
+    else if(clear){st='清仓·不可指定';c='bad';}
+    else if(!(r.price>0)||!(ref>0)){st='数据缺失';c='warn';}
+    else{ok=true;st=surge?'可指定·暴增已压回':'可指定';c=surge?'warn':'ok';}
+    return {ref:ref,ok:ok,st:st,c:c};
+  }
+
+  function calcAB(){
+    var D=v('ab_D'),R=Math.min(v('ab_R'),D);
+    var rows=[['A：抵扣',D,R,0,D-R,D],['B：加赠（同等需求）',D-R,0,R,D-R,D],['B：加赠（对方扩量）',D,0,R,D,D+R]];
+    $('ab_body').innerHTML=rows.map(function(r,i){
+      return '<tr class="'+(i===2?'ref':'')+'"><td>'+r[0]+'</td><td>'+f2(r[1])+'</td><td>'+f2(r[2])+'</td><td>'+f2(r[3])+'</td><td>'+f2(r[4])+'</td><td>'+f2(r[5])+'</td><td>'+fp(r[5]>0?r[4]/r[5]:0)+'</td><td>'+f2(R)+'</td></tr>';
+    }).join('');
+    $('ab_note').innerHTML='同等需求下，A 与 B 实付均为 '+f2(D-R)+'、到货均为 '+f2(D)+'，公司让出均为 '+f2(R)+'。"对方扩量"一行足款率更高，只是因为对方多拿了 '+f2(R)+' 的货，分母变大，与返点方式无关。<br>定价页的计算方式：<b>A 部分按票面计（第 1 行），B 部分按"对方扩量"计（第 3 行，公司只付出货的成本）</b>。';
+  }
+
+  function calcTheta(r,paid,cur){
+    var th=Math.min(1,Math.max(0,v('p_theta'))),arr=[0,0.1,0.2,0.3,0.5,1];
+    if(!arr.some(function(x){return Math.abs(x-cur)<0.0005;}))arr.push(cur);
+    arr.sort(function(a,b){return a-b;});
+    $('theta_body').innerHTML=arr.map(function(s){
+      var pv=1-s*(1-th),eq=pv>0?r/pv:Infinity,extra=isFinite(eq)?(eq-r)*paid:Infinity,isCur=Math.abs(s-cur)<0.0005;
+      return '<tr class="'+(isCur?'hl':'')+'"><td>'+fp(s)+'</td><td>'+pv.toFixed(3)+'</td><td>'+(isFinite(eq)?(eq*100).toFixed(2)+'%':'无法维持')+'</td><td>'+(isFinite(extra)?f2(extra):'—')+'</td><td class="l">'+(isCur?'当前测算 B 实际占比':'')+'</td></tr>';
+    }).join('');
+  }
+
+  function calcGifts(){
+    var t=0;
+    gifts.forEach(function(g,i){var q=Math.floor(Math.max(0,g.qty||0)),sub=q*(g.cost||0);t+=sub;var el=$('gift-'+i+'-sub');if(el)el.textContent=f2(sub);});
+    $('gift_total').innerHTML='C 类赠品成本合计：<b>'+f2(t)+'</b> 元（数量按整数件计；不计入返点额，不抵货款，单独作为市场费用核算）。';
+  }
+
+  function calcLedger(r){
+    var life=Math.max(1,Math.round(v('l_life'))),dep=v('l_deposit');
+    var lots=[],ended=false,tAcc=0,tUse=0,tExp=0,settle=null;
+    ledger.forEach(function(row,i){
+      function set(k,h){var el=$('lg-'+i+'-'+k);if(el)el.innerHTML=h;}
+      if(ended){['open','acc','use','exp','close'].forEach(function(k){set(k,'—');});set('st',tag('协议已终止','mute'));return;}
+      var open=lots.reduce(function(a,l){return a+l.amt;},0);
+      var use=(row.useA||0)+(row.useB||0),over=false;
+      if(use>open+1e-9){over=true;use=open;}
+      var u=use;
+      for(var j=0;j<lots.length&&u>1e-9;j++){var t=Math.min(lots[j].amt,u);lots[j].amt-=t;u-=t;}
+      lots=lots.filter(function(l){return l.amt>1e-9;});
+      var exp=0;
+      if(!row.oos){lots.forEach(function(l){l.life--;});lots=lots.filter(function(l){if(l.life<=0){exp+=l.amt;return false;}return true;});}
+      var acc=(row.paid||0)*r;
+      if(acc>0)lots.push({amt:acc,life:life});
+      var close=lots.reduce(function(a,l){return a+l.amt;},0);
+      tAcc+=acc;tUse+=use;tExp+=exp;
+      set('open',f2(open));set('acc',f2(acc));set('use',f2(use));set('exp',exp>0?'<span class="bad">'+f2(exp)+'</span>':f2(0));set('close',f2(close));
+      var st=[];
+      if(over)st.push(tag('使用超出余额，已按余额封顶','bad'));
+      if(row.oos)st.push(tag('我方缺货·有效期暂停','warn'));
+      if(row.end){st.push(tag('协议终止·随保证金结算','ok'));ended=true;settle={m:row.m,bal:close};}
+      if(!st.length)st.push(tag('正常','ok'));
+      set('st',st.join(' '));
+    });
+    var bal=lots.reduce(function(a,l){return a+l.amt;},0);
+    function k(t,val,d){return '<div class="kpi"><div class="t">'+t+'</div><div class="v">'+val+'</div>'+(d?'<div class="d">'+d+'</div>':'')+'</div>';}
+    var html=k('累计计提',f2(tAcc))+k('累计使用',f2(tUse))+k('累计过期作废',f2(tExp));
+    html+=settle?k('终止结算（'+esc(settle.m)+'）',f2(settle.bal+dep),'返点余额 '+f2(settle.bal)+' ＋ 保证金 '+f2(dep)):k('当前返点余额',f2(bal),'未终止，继续滚动');
+    $('l_sum').innerHTML=html;
+  }
+
+  function calcMix(r,R,Bact){
+    var p=PR(),m=p?p.mInv:0,beta=R>0?Bact/R:0,A=R-Bact;
+    var nmFull=m-r*(1-m),nmMix=m-r*(1-beta)-r*beta*(1-m),nmSame=m-r;
+    var ref=(p&&isFinite(p.nm))?p.nm:nmMix;
+    function dpp(x){var d=(x-ref)*100;if(Math.abs(d)<0.005)return '0.00 pp';return (d>=0?'+':'')+d.toFixed(2)+' pp';}
+    var cMix=A+Bact*(1-m);
+    var rows=[
+      ['原口径 · 全部加件','100% 下批加件，按货的成本计（对方额外拿货）',R*(1-m),1-m,nmFull,'ref'],
+      ['本页方案 · 增量口径','A '+fp(1-beta)+' 按票面计 ＋ B '+fp(beta)+' 按货的成本计',cMix,R>0?cMix/R:0,nmMix,'hl'],
+      ['本页方案 · 同等需求口径（最差）','A、B 都按票面计（B 挤占了对方本来要买的货）',R,1,nmSame,'']
+    ];
+    $('mix_body').innerHTML=rows.map(function(x){
+      return '<tr class="'+x[5]+'"><td>'+x[0]+'</td><td class="l">'+x[1]+'</td><td>'+f2(x[2])+'</td><td>'+x[3].toFixed(3)+'</td><td><b>'+fp(x[4],2)+'</b></td><td class="'+(x[4]<ref-1e-6?'bad':(x[4]>ref+1e-6?'ok':''))+'">'+dpp(x[4])+'</td></tr>';
+    }).join('');
+    var consist='';
+    if(p){
+      if(!$('l_rate').checked)consist=tag('返点率已手填，与定价页货补合计不同，对账仅供参考','warn');
+      else if(p.follow&&Math.abs(p.beta-beta)<1e-6)consist=tag('一致：定价页已按本页 β 计算，"本页方案 · 增量口径"等于定价页货补方案','ok');
+      else consist=tag('定价页 β = '+fp(p.beta,2)+'（手填），与本页实际 '+fp(beta,2)+' 不一致','warn');
+    }
+    var tgt=p?p.tgt:0,mT=(tgt+r)/(1+r*beta),mS=tgt+r;
+    $('mix_note').innerHTML=consist+'<br>有效毛利率 = 开票毛利率 − r × 每 1 元返点成本（开票毛利率取定价页 '+fp(m,2)+'）。定价页货补方案当前为 <b>'+fp(ref,2)+'</b>；原口径（全部加件）为 '+fp(nmFull,2)+'；最差为 '+fp(nmSame,2)+'。<br>'+
+      '要达到定价页目标有效毛利率 '+fp(tgt,2)+'：按增量口径，开票毛利率需 <b class="warn">'+fp(mT,2)+'</b>（等于定价页"货补倒推·达目标"）；按同等需求口径需 '+fp(mS,2)+'。';
+  }
+
+  function recalc(){
+    syncParams();
+    curRows.forEach(function(x){if(!x.linked){x.name=x.o.name;x.price=+x.o.price||0;}});
+    var r=v('p_rate')/100,paid=v('p_paid'),R=paid*r;
+    var P=promoF(),k=v('p_k')/100,cap=Math.min(1,Math.max(0,v('p_cap')/100));
+    var pp=PR(),rmax=pp?pp.rmax:Infinity;
+    var ev=curRows.map(evalRow);
+    var dig=curRows.map(function(x,i){return ev[i].ok?Math.floor(ev[i].ref*P.n*P.F*k+1e-9):0;});
+    var digV=curRows.map(function(x,i){return dig[i]*x.price;});
+    var D=digV.reduce(function(a,b){return a+b;},0);
+    var share=R>0?Math.min(D/R,cap):0,target=R*share,Bact=0;
+    lastAlloc=curRows.map(function(x,i){
+      var capP=x.linked?(isFinite(rmax)?Math.floor((x.q||0)*rmax+1e-9):Infinity):Infinity;
+      var pcs=0;
+      if(ev[i].ok&&D>0&&x.price>0)pcs=Math.max(0,Math.min(dig[i],capP,Math.floor(target*digV[i]/D/x.price+1e-9)));
+      var val=pcs*x.price;Bact+=val;
+      var capHit=ev[i].ok&&pcs===capP&&capP<dig[i];
+      var net=x.price*(1-r),fl=+x.o.floor||0,wt,wc;
+      if(!(fl>0)){wt='未填底价';wc='mute';}
+      else if(net<fl){wt='跌破保本';wc='bad';}
+      else if(net<fl*1.05){wt='贴近保本';wc='warn';}
+      else{wt='安全';wc='ok';}
+      function set(id,h){var el=$('sku-'+i+'-'+id);if(el)el.innerHTML=h;}
+      set('ref',ev[i].ref.toFixed(1));set('st',tag(ev[i].st,ev[i].c));
+      set('dig',ev[i].ok?f0(dig[i]):'—');
+      set('cap',isFinite(capP)?f0(capP):'不限');
+      set('pcs',ev[i].ok?('<b>'+f0(pcs)+'</b>'+(capHit?' '+tag('摊薄封顶','warn'):'')):'—');
+      set('val',ev[i].ok?f2(val):'—');
+      set('net',f2(net));set('warn',tag(wt,wc));
+      return {id:x.id,name:x.name,price:x.price,ref:ev[i].ref.toFixed(1),st:ev[i].st,ok:ev[i].ok,capHit:capHit,dig:ev[i].ok?dig[i]:0,digV:digV[i],cap:isFinite(capP)?capP:'不限',pcs:pcs,val:val,net:net,warn:wt};
+    });
+    var A=R-Bact;
+    $('k_R').textContent=f2(R);
+    $('k_F').textContent=P.F.toFixed(3);$('k_Fl').textContent=P.list.join('，');
+    $('k_D').textContent=f2(D);
+    $('k_Bcap').textContent=fp(share)+(R>0&&D/R>cap?'（触及封顶）':'');
+    $('k_Bact').textContent=f2(Bact);$('k_Bpct').textContent='占返点 '+fp(R>0?Bact/R:0,2)+'（= 定价页 β）';
+    $('k_A').textContent=f2(A);
+    calcAB();calcTheta(r,paid,R>0?Bact/R:0);calcMix(r,R,Bact);calcGifts();calcLedger(r);
+
+    /* 发布给定价页（放在最后；定价页签名不变时不会重算） */
+    var linked=!!(pp&&$('l_rate').checked&&$('l_sync').checked),rowsMap={};
+    lastAlloc.forEach(function(a){rowsMap[a.id]={pcs:a.pcs,ok:a.ok,st:a.st,capHit:a.capHit};});
+    var beta=R>0?Bact/R:0;
+    window.__REBATE={beta:beta,linked:linked,rows:rowsMap,sig:JSON.stringify([beta.toFixed(8),linked,rowsMap])};
+    if(typeof window.__onRebate==='function'){try{window.__onRebate();}catch(err){console.error(err);}}
+  }
+
+  function exportCSV(){
+    var rows=[['SKU','开票单价','参考动销(件/月)','状态','额外可消化(件)','额外可消化货值','摊薄上限(件)','B赠品件数','B赠品货值','含返点净价','保本预警']];
+    lastAlloc.forEach(function(a){rows.push([a.name,a.price,a.ref,a.st,a.dig,a.digV.toFixed(2),a.cap,a.pcs,a.val.toFixed(2),a.net.toFixed(2),a.warn]);});
+    var csv='\ufeff'+rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+    try{
+      var b=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(b),a=document.createElement('a');
+      a.href=url;a.download='B赠品分配.csv';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1500);
+      $('csv_msg').textContent='已触发下载；如被环境拦截，请在浏览器中直接打开本文件后再试。';
+    }catch(e){$('csv_msg').textContent='当前预览环境不支持下载，请在浏览器中直接打开本文件后再试。';}
+  }
+
+  function toggleSync(on){
+    if(!on){
+      localSkus=curRows.map(function(x){var s={id:x.id,name:x.name,price:x.price};EXTK.forEach(function(k){s[k]=x.o[k];});return s;});
+    }else{
+      localSkus.forEach(function(s){if(ext[s.id])EXTK.forEach(function(k){ext[s.id][k]=s[k];});});
+    }
+    renderSku();recalc();
+  }
+
+  function onEdit(e,isChange){
+    var t=e.target;if(!t||!t.getAttribute)return;
+    if(t.type==='checkbox'&&!isChange)return;
+    if(t.id==='l_sync'){toggleSync(t.checked);return;}
+    if(t.id==='l_rate'){recalc();return;}
+    var tt=t.getAttribute('data-t');
+    if(tt){
+      var i=+t.getAttribute('data-i'),k=t.getAttribute('data-k');
+      var o=tt==='sku'?(curRows[i]&&curRows[i].o):(stores[tt]&&stores[tt][i]);
+      if(!o)return;
+      if(t.type==='checkbox')o[k]=t.checked;
+      else if(t.type==='number'){var x=parseFloat(t.value);o[k]=isFinite(x)?x:0;}
+      else o[k]=t.value;
+      recalc();
+    }else if(t.classList&&t.classList.contains('p')){recalc();}
+  }
+  root.addEventListener('input',function(e){onEdit(e,false);});
+  root.addEventListener('change',function(e){onEdit(e,true);});
+  root.addEventListener('click',function(e){
+    var d=e.target.closest('[data-rdel]');
+    if(d){
+      var t=d.getAttribute('data-rdel'),i=+d.getAttribute('data-i');
+      if(t==='sku')localSkus.splice(i,1);else stores[t].splice(i,1);
+      renderAll();return;
+    }
+    var a=e.target.closest('[data-radd]');
+    if(a){
+      var ty=a.getAttribute('data-radd');
+      if(ty==='sku'){lid++;localSkus.push(Object.assign({id:'L'+lid,name:'新SKU',price:0},blankExt()));}
+      if(ty==='gift')gifts.push({name:'新赠品',qty:0,cost:0});
+      if(ty==='lg'){
+        var m='2027-01',last=ledger[ledger.length-1];
+        if(last&&/^\d{4}-\d{2}$/.test(last.m)){var p=last.m.split('-').map(Number),y=p[0],mm=p[1]+1;if(mm>12){mm=1;y++;}m=y+'-'+String(mm).padStart(2,'0');}
+        ledger.push({m:m,paid:0,useA:0,useB:0,oos:false,end:false});
+      }
+      renderAll();return;
+    }
+    if(e.target.id==='btn_csv')exportCSV();
+  });
+
+  /* 定价页回调：SKU 结构变化才重绘输入行，避免打断正在输入的内容 */
+  window.__onPricing=function(){
+    var p=PR(),s=p?JSON.stringify(p.skus):'';
+    if($('l_sync').checked&&s!==skuSig)renderSku();
+    recalc();
+  };
+  renderAll();
+})();
+</script>
+
+<!-- ================= 页签切换 ================= -->
+<script>
+(function(){
+  var btns=document.querySelectorAll('.tabbar [data-tab]');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var t=b.getAttribute('data-tab');
+      btns.forEach(function(x){x.classList.toggle('on',x===b);});
+      document.getElementById('tab-pricing').style.display=t==='pricing'?'':'none';
+      document.getElementById('tab-rebate').style.display=t==='rebate'?'':'none';
+      window.scrollTo(0,0);
+    });
+  });
+})();
+</script>
+
+<!-- ================= 2027 统一批采价反推引擎 ================= -->
+<script>
+(function(){
+  var ids=['o_priv_rev','o_pub_rev','o_priv_buy','o_pub_buy','o_priv_cogs','o_pub_cogs','o_priv_platform','o_pub_platform','o_priv_marketing','o_pub_marketing','o_priv_logistics','o_pub_logistics','o_priv_other','o_pub_other','o_priv_floor','o_pub_floor','o_priv_pass','o_pub_pass','o_priv_elastic','o_pub_elastic','o_company_m','o_merchant_target','o_company_mode','o_company_floor','o_scan_max','o_protect_cap','o_cmp_dist_avg','o_cmp_dist_worst','o_cmp_replace_rate','o_cmp_price_mode','o_cmp_same_cost'];
+  function $(id){return document.getElementById(id);}
+  function n(id){var x=parseFloat($(id).value);return isFinite(x)?x:0;}
+  function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+  function money(x){return isFinite(x)?x.toLocaleString('zh-CN',{minimumFractionDigits:1,maximumFractionDigits:1}):'—';}
+  function pct(x,d){return isFinite(x)?(x*100).toFixed(d==null?1:d)+'%':'—';}
+  function kpi(t,v,d,c){return '<div class="kpi"><div class="t">'+t+'</div><div class="v '+(c||'')+'">'+v+'</div><div class="d">'+(d||'')+'</div></div>';}
+  function channel(prefix,name,x){
+    var rev=n('o_'+prefix+'_rev'),buy=n('o_'+prefix+'_buy'),cogs=buy*n('o_'+prefix+'_cogs')/100;
+    var exp=(n('o_'+prefix+'_platform')+n('o_'+prefix+'_marketing')+n('o_'+prefix+'_logistics')+n('o_'+prefix+'_other'))/100;
+    var floor=n('o_'+prefix+'_floor')/100,pass=n('o_'+prefix+'_pass')/100,elastic=n('o_'+prefix+'_elastic');
+    var terminalPriceChange=pass*x;
+    var volume=clamp(1+elastic*terminalPriceChange,0,3);
+    var adjustedRev=rev*(1+terminalPriceChange)*volume;
+    var adjustedCogs=cogs*(1+x)*volume;
+    var costs=adjustedRev*exp;
+    var profit=adjustedRev-adjustedCogs-costs;
+    return {name:name,rev:rev,buy:buy,cogs:cogs,expenseRate:exp,floor:floor,pass:pass,elastic:elastic,volume:volume,adjustedRev:adjustedRev,adjustedCogs:adjustedCogs,costs:costs,profit:profit,margin:adjustedRev>0?profit/adjustedRev:-Infinity,baseProfit:rev-cogs-rev*exp};
+  }
+  function company(x,priv,pub){
+    var m=n('o_company_m')/100,totalBuy=priv.buy+pub.buy,volumeWeightedBuy=priv.buy*priv.volume+pub.buy*pub.volume;
+    var margin=(m+x)/(1+x),gross=volumeWeightedBuy*(m+x),base=totalBuy*m;
+    var mode=$('o_company_mode').value,ok=true,why='';
+    if(mode==='A'){ok=(m+x)>=m-1e-9;why='每元批采商品毛利不低于现价水平';}
+    if(mode==='B'){ok=margin>=n('o_company_floor')/100-1e-9;why='批采毛利率不低于自定义底线';}
+    if(mode==='C')why='不设置公司毛利硬性底线';
+    return {gross:gross,base:base,increment:gross-base,margin:margin,volumeWeightedBuy:volumeWeightedBuy,ok:ok,why:why};
+  }
+  function evaluate(x){
+    var a=channel('priv','私域',x),b=channel('pub','公域',x),c=company(x,a,b);
+    var totalProfit=a.profit+b.profit,target=n('o_merchant_target');
+    var okPriv=a.margin>=a.floor-1e-9,okPub=b.margin>=b.floor-1e-9,okTotal=totalProfit>=target-1e-9;
+    return {x:x,priv:a,pub:b,totalProfit:totalProfit,target:target,company:c,okPriv:okPriv,okPub:okPub,okTotal:okTotal,okCompany:c.ok,ok:okPriv&&okPub&&okTotal&&c.ok};
+  }
+  function evaluateTier(excessUplift,totalBuy){
+    var cap=Math.max(0,n('o_protect_cap'));
+    var protectedTotal=Math.min(cap,totalBuy);
+    var protectedShare=totalBuy>0?protectedTotal/totalBuy:0;
+    var effectiveUplift=excessUplift*(1-protectedShare);
+    var a=channel('priv','私域',effectiveUplift),b=channel('pub','公域',effectiveUplift),c=company(effectiveUplift,a,b);
+    var totalProfit=a.profit+b.profit,target=n('o_merchant_target');
+    var okPriv=a.margin>=a.floor-1e-9,okPub=b.margin>=b.floor-1e-9,okTotal=totalProfit>=target-1e-9;
+    return {x:excessUplift,effectiveUplift:effectiveUplift,protectedTotal:protectedTotal,protectedShare:protectedShare,excessTotal:Math.max(0,totalBuy-protectedTotal),priv:a,pub:b,totalProfit:totalProfit,target:target,company:c,okPriv:okPriv,okPub:okPub,okTotal:okTotal,okCompany:c.ok,ok:okPriv&&okPub&&okTotal&&c.ok};
+  }
+  function run(){
+    var totalRev=n('o_priv_rev')+n('o_pub_rev'),totalBuy=n('o_priv_buy')+n('o_pub_buy');
+    var revShare=totalRev>0?n('o_priv_rev')/totalRev:0,buyShare=totalBuy>0?n('o_priv_buy')/totalBuy:0;
+    var privRatio=n('o_priv_rev')>0?n('o_priv_buy')/n('o_priv_rev'):0,pubRatio=n('o_pub_rev')>0?n('o_pub_buy')/n('o_pub_rev'):0;
+    // 以 2027 模型为主数据源：旧模型的 T、m0 自动同步，P0/m1/k/kg/R/β 仍保留各自独立假设。
+    if($('tot'))$('tot').value=totalBuy.toFixed(2);
+    if($('m0'))$('m0').value=n('o_company_m').toFixed(2);
+    $('o_mix_kpis').innerHTML=kpi('终端营收结构｜私域 / 公域',pct(revShare)+' / '+pct(1-revShare),'终端净 Sell-out 占比')+
+      kpi('批采额结构｜私域 / 公域',pct(buyShare)+' / '+pct(1-buyShare),'按现价计算的 Sell-in 占比')+
+      kpi('私域批采额 / 终端营收',pct(privRatio,1),'两种口径独立输入')+
+      kpi('公域批采额 / 终端营收',pct(pubRatio,1),'两种口径独立输入');
+    var maxX=clamp(n('o_scan_max')/100,0,3),steps=3000,best=null,first=null,last=null,feasible=[];
+    for(var i=0;i<=steps;i++){
+      var x=maxX*i/steps,e=evaluate(x);
+      if(e.ok){if(!first)first=e;last=e;feasible.push(e);if(!best||e.company.increment>best.company.increment)best=e;}
+    }
+    // 额度保护方案独立扫描：优化变量是“超出保护额度部分的提价幅度”。
+    var tierBest=null,tierFirst=null,tierLast=null,tierFeasible=[];
+    for(var ti=0;ti<=steps;ti++){
+      var tx=maxX*ti/steps,te=evaluateTier(tx,totalBuy);
+      if(te.ok){if(!tierFirst)tierFirst=te;tierLast=te;tierFeasible.push(te);if(!tierBest||te.company.increment>tierBest.company.increment)tierBest=te;}
+    }
+    // 约束一般形成连续区间；若出现非连续性，仍展示实际可行点，并用最优点作为推荐。
+    var base=evaluate(0),rec=best;
+    var status=rec?'找到双方可接受区间':'当前参数下没有同时满足双方要求的批采涨幅';
+    window.__UNIFIED_PRICING=rec?{x:rec.x,totalBuy:totalBuy,volumeWeightedBuy:rec.company.volumeWeightedBuy,companyMargin:rec.company.margin,merchantProfit:rec.totalProfit}:null;
+    if(typeof window.__onUnifiedPricing==='function'){try{window.__onUnifiedPricing();}catch(err){console.error(err);}}
+    var linked=(window.__PRICING&&window.__PRICING.unified)||null;
+    var minText=first?pct(first.x):'—',atCeiling=!!(last&&Math.abs(last.x-maxX)<maxX/steps+1e-9),maxText=last?(atCeiling?'≥'+pct(maxX)+'（触及扫描上限）':pct(last.x)):'—';
+    $('o_main_kpis').innerHTML=kpi('推荐统一批采涨幅',rec?pct(rec.x):'无可行解',rec?(Math.abs(rec.x-maxX)<maxX/steps+1e-9?'最优值触及扫描上限；可提高扫描上限继续搜索':'在约束内使公司增量商品毛利最大'):'请调整利润目标、费用率或经营假设',''+(rec?'opt-good':'opt-bad'))+
+      kpi('双方可接受涨幅区间',first&&last?minText+' ～ '+maxText:'无',feasible.length?'扫描步长约 '+pct(maxX/steps,2):'未发现可行点',feasible.length?'opt-good':'opt-bad')+
+      kpi('公司年度增量商品毛利',rec?money(rec.company.increment)+' 万':'—',rec?'相对现价批采的增量毛利':'—',rec&&rec.company.increment>=0?'opt-good':'opt-warn')+
+      kpi('托盘商年度综合经营利润',rec?money(rec.totalProfit)+' 万':'—',rec?'目标 '+money(rec.target)+' 万':'—',rec&&rec.totalProfit>=rec.target?'opt-good':'opt-bad')+
+      kpi('公司批采毛利率',rec?pct(rec.company.margin):'—',rec?('现价 '+pct(n('o_company_m')/100)):'—');
+    $('o_linked_kpis').innerHTML=rec&&linked?
+      kpi('联动方案票面涨幅',pct(linked.faceUplift),'应与上方推荐涨幅 '+pct(rec.x)+' 一致',Math.abs(linked.faceUplift-rec.x)<0.0001?'opt-good':'opt-warn')+
+      kpi('扣除 A/B 货补后的实际单价涨幅',pct(linked.actualUplift),'货补率 '+pct(linked.rebateRate)+'｜B 加件占比 β '+pct(linked.beta),linked.actualUplift>=0?'opt-good':'opt-warn')+
+      kpi('联动方案有效批采毛利率',pct(linked.effectiveMargin),'扣除 A 抵扣与 B 货成本后的公司毛利率',linked.effectiveMargin>=0?'opt-good':'opt-warn')+
+      kpi('公司可承受替代率上限',pct(linked.breakEvenCannibalism),'当前新增批采替代率 '+pct(n('k')/100)+'｜B加件货物替代损失 '+money(linked.leakLoss)+' 万',linked.breakEvenCannibalism>=n('k')/100?'opt-good':'opt-bad')+
+      kpi('当前新增批采替代率下公司增量毛利差',money(linked.deltaGM)+' 万','相对原批采基准；正值优于不合作',linked.deltaGM>=0?'opt-good':'opt-bad')
+      :kpi('货补/渠道替代联动结果','暂不可计算','需先找到双方可接受的统一批采涨幅','opt-warn');
+    $('o_linked_note').innerHTML=rec&&linked?
+      '已自动联动：2027 公私域批采额合计 <b>'+money(totalBuy)+' 万</b> → 同步为旧模型 T；公司当前毛利率 <b>'+pct(n('o_company_m')/100)+'</b> → 同步为 m₀；推荐涨幅 <b>'+pct(rec.x)+'</b> → 生成联动开票额 <b>'+money(linked.invoice)+' 万</b>。公司可承受替代率上限按旧模型 P₀、m₁、当前新增批采替代率 k、B加件货物替代率 k_g 及 A/B 兑现结构计算；P₀、m₁、k、k_g、货补率与 β 仍由旧模型/返点页维护，不由年度模型臆造。年度经营利润优化与旧模型的历史渠道替代风险审计分别展示，避免把不同基准期混成一个利润数；因此上方公司年度增量商品毛利仍是未扣货补成本的商品毛利口径，下方联动指标用于补充审计，不能直接与上方数值相加。'
+      :'未找到可行涨幅，暂不生成联动开票价；请调整 2027 经营目标或经营假设。';
+
+    var eShow=rec||base;
+    var rows=[['私域',eShow.priv,n('o_priv_floor')/100],['公域',eShow.pub,n('o_pub_floor')/100]];
+    var h='<thead><tr><th>渠道</th><th>基准终端收入</th><th>基准批采额</th><th>基准已售商品成本</th><th>调价后终端收入</th><th>调价后商品成本</th><th>经营费用</th><th>经营利润</th><th>经营利润率</th><th>最低要求</th><th>校验</th></tr></thead><tbody>';
+    rows.forEach(function(r){var a=r[1],ok=a.margin>=r[2]-1e-9;h+='<tr><td>'+r[0]+'</td><td>'+money(a.rev)+'</td><td>'+money(a.buy)+'</td><td>'+money(a.cogs)+'</td><td>'+money(a.adjustedRev)+'</td><td>'+money(a.adjustedCogs)+'</td><td>'+money(a.costs)+'</td><td><b>'+money(a.profit)+'</b></td><td>'+pct(a.margin)+'</td><td>'+pct(r[2])+'</td><td class="'+(ok?'opt-good':'opt-bad')+'">'+(ok?'达标':'未达标')+'</td></tr>';});
+    $('o_channel_table').innerHTML=h+'</tbody>';
+
+    var scen=[0,0.05,0.1,0.15,0.2,0.25,0.3];
+    if(rec){[rec.x-0.05,rec.x-0.02,rec.x,rec.x+0.02,rec.x+0.05].forEach(function(x){if(x>=0&&x<=maxX)scen.push(x);});}
+    scen=scen.filter(function(x){return x>=0&&x<=maxX;}).sort(function(a,b){return a-b;}).filter(function(x,i,a){return i===0||Math.abs(x-a[i-1])>0.0005;});
+    var sh='<thead><tr><th>统一批采涨幅</th><th>私域经营利润</th><th>私域利润率</th><th>公域经营利润</th><th>公域利润率</th><th>托盘商综合利润</th><th>公司增量商品毛利</th><th>公司批采毛利率</th><th>双方约束</th></tr></thead><tbody>';
+    scen.forEach(function(x){var e=evaluate(x);sh+='<tr class="'+(rec&&Math.abs(x-rec.x)<0.0006?'hl':'')+'"><td><b>'+pct(x)+'</b></td><td>'+money(e.priv.profit)+'</td><td>'+pct(e.priv.margin)+'</td><td>'+money(e.pub.profit)+'</td><td>'+pct(e.pub.margin)+'</td><td>'+money(e.totalProfit)+'</td><td>'+money(e.company.increment)+'</td><td>'+pct(e.company.margin)+'</td><td class="'+(e.ok?'opt-good':'opt-bad')+'">'+(e.ok?'全部达标':'未全部达标')+'</td></tr>';});
+    $('o_scenario_table').innerHTML=sh+'</tbody>';
+
+    if(rec){
+      $('o_conclusion').innerHTML='<b>'+status+'。</b> 在当前输入假设下，建议统一批采价相对现价上调 <b>'+pct(rec.x)+'</b>。此时托盘商私域经营利润约 <b>'+money(rec.priv.profit)+' 万</b>，公域约 <b>'+money(rec.pub.profit)+' 万</b>，年度综合经营利润约 <b>'+money(rec.totalProfit)+' 万</b>；公司增加商品毛利约 <b>'+money(rec.company.increment)+' 万</b>。可行涨幅范围为 <b>'+minText+'～'+maxText+'</b>。'+(rec.company.increment<0?'注意：该方案下公司增量商品毛利仍为负，虽然托盘商达标，但公司整体毛利低于现价基准，应谨慎。':'')+(atCeiling?'当前结果触及扫描上限，请提高扫描上限后再确认真正的最优点。':'')+'这是模型约束下的数学最优值，不代表市场一定能接受。';
+    }else{
+      $('o_conclusion').innerHTML='<b class="opt-bad">'+status+'。</b> 当前基准情景：私域利润 '+money(base.priv.profit)+' 万（'+pct(base.priv.margin)+'），公域利润 '+money(base.pub.profit)+' 万（'+pct(base.pub.margin)+'），综合利润 '+money(base.totalProfit)+' 万；综合利润目标 '+money(base.target)+' 万。请优先检查：终端营收/批采额关系、费用率、各渠道最低利润率和年度利润目标。';
+    }
+    var tierMin=tierFirst?pct(tierFirst.x):'—',tierAtCeiling=!!(tierLast&&Math.abs(tierLast.x-maxX)<maxX/steps+1e-9),tierMax=tierLast?(tierAtCeiling?'≥'+pct(maxX)+'（触及扫描上限）':pct(tierLast.x)):'—';
+    if(tierBest){
+      var privProtected=n('o_priv_buy')*tierBest.protectedShare,pubProtected=n('o_pub_buy')*tierBest.protectedShare;
+      $('o_tier_kpis').innerHTML=kpi('超额部分推荐提价幅度',pct(tierBest.x),'仅适用于超过现价保护额度的批采部分','opt-good')+
+        kpi('公私域加权平均实际涨幅',pct(tierBest.effectiveUplift),'保护额度按现价批采额比例分摊','opt-good')+
+        kpi('现价保护额度 / 实际保护额',money(n('o_protect_cap'))+' / '+money(tierBest.protectedTotal)+' 万','保护额度不超过公私域现价批采总额')+
+        kpi('公司年度增量商品毛利',money(tierBest.company.increment)+' 万','相对公私域全部按现价批采',''+(tierBest.company.increment>=0?'opt-good':'opt-warn'))+
+        kpi('托盘商年度综合经营利润',money(tierBest.totalProfit)+' 万','目标 '+money(tierBest.target)+' 万','opt-good')+
+        kpi('双方可接受超额提价区间',tierMin+' ～ '+tierMax,tierFeasible.length?'扫描步长约 '+pct(maxX/steps,2):'未发现可行点',tierFeasible.length?'opt-good':'opt-bad');
+      var tierRows=[['私域',n('o_priv_buy'),privProtected,n('o_priv_buy')-privProtected,tierBest.priv],['公域',n('o_pub_buy'),pubProtected,n('o_pub_buy')-pubProtected,tierBest.pub]];
+      var th='<thead><tr><th>渠道</th><th>现价批采额</th><th>额度内按现价</th><th>超额提价部分</th><th>超额部分涨幅</th><th>该渠道加权平均涨幅</th><th>调价后经营利润</th><th>经营利润率</th><th>公司增量商品毛利分摊*</th></tr></thead><tbody>';
+      tierRows.forEach(function(r){th+='<tr><td>'+r[0]+'</td><td>'+money(r[1])+'</td><td>'+money(r[2])+'</td><td>'+money(r[3])+'</td><td>'+pct(tierBest.x)+'</td><td>'+pct(tierBest.effectiveUplift)+'</td><td>'+money(r[4].profit)+'</td><td>'+pct(r[4].margin)+'</td><td>—</td></tr>';});
+      th+='<tr class="hl"><td><b>合计</b></td><td>'+money(totalBuy)+'</td><td>'+money(tierBest.protectedTotal)+'</td><td>'+money(tierBest.excessTotal)+'</td><td>'+pct(tierBest.x)+'</td><td>'+pct(tierBest.effectiveUplift)+'</td><td>'+money(tierBest.totalProfit)+'</td><td>—</td><td><b>'+money(tierBest.company.increment)+' 万</b></td></tr></tbody>';
+      $('o_tier_table').innerHTML=th;
+      $('o_tier_note').innerHTML='额度分配：私域保护 '+money(privProtected)+' 万，公域保护 '+money(pubProtected)+' 万；两者按现价批采额占比分配，保护比例均为 '+pct(tierBest.protectedShare)+'。超额批采额合计 '+money(tierBest.excessTotal)+' 万。当前可接受超额提价区间 '+tierMin+'～'+tierMax+'。'+(tierAtCeiling?' <b class="opt-warn">推荐值触及扫描上限，需扩大扫描范围。</b>':'')+'<br>*公司增量商品毛利为公司整体口径，不按渠道强行拆分；此表“—”表示不做伪精确分摊。该方案与全量统一涨价方案分别计算，不能把两套方案的利润相加。';
+    }else{
+      $('o_tier_kpis').innerHTML=kpi('额度保护方案','当前参数下无可行解','请检查托盘商利润目标、费用率及公司毛利约束','opt-bad');
+      $('o_tier_table').innerHTML='';
+      $('o_tier_note').textContent='未找到同时满足公私域利润率、托盘商年度综合利润及公司毛利约束的超额提价幅度。';
+    }
+    $('o_formula_note').innerHTML='计算口径：① 全量统一涨价方案：调价后采购成本 = 基准批采额 × 当年售出成本转化率 × (1+统一批采涨幅) × 销量变化系数；② 额度保护方案：现价保护额度按公私域现价批采额比例分摊，公私域超额部分提价幅度相同；年度汇总中以“超额部分占总批采额比例 × 超额提价幅度”折算渠道加权平均涨幅，再用于终端售价传导和销量弹性；③ 经营利润 = 调价后终端净收入 − 已售商品成本 − 平台/交易、推广、物流履约及其他经营费用；④ 公司增量商品毛利按公私域销量变化后的采购数量分别计算（公司单位成本不变）；⑤ 公司批采毛利率 = (现有毛利率+加权平均涨幅)/(1+加权平均涨幅)。不含税务、资金成本、固定费用、退货变化、返利货补的二次影响，需按实际口径补充。额度保护方案是年度汇总近似，未模拟SKU级价格差异与渠道间保护额度挪用；建议通过合同限定额度、渠道和SKU范围。';
+    // ⑦ 对标：只比较公司商品毛利，不扣渠道经营费用。
+    var cmpMode=$('o_cmp_price_mode').value;
+    var cmpUplift=cmpMode==='tier'?(tierBest?tierBest.effectiveUplift:NaN):(rec?rec.x:NaN);
+    var m0=n('o_company_m')/100, avgM=clamp(n('o_cmp_dist_avg')/100,0,0.99), worstM=clamp(n('o_cmp_dist_worst')/100,0,0.99);
+    var sameCost=Math.max(0,n('o_cmp_same_cost'));
+    var rebateData=window.__PRICING||{}, rebateRate=clamp(rebateData.Rall||0,0,1), beta=clamp(rebateData.beta||0,0,1);
+    function gpForMerchant(costBase,u){var invoice=costBase/(1-m0)*(1+u),aDeduction=invoice*rebateRate*(1-beta),bCost=costBase*rebateRate*beta;return invoice-costBase-aDeduction-bCost;}
+    function gpForDistributor(costBase,m){return costBase*m/(1-m);}
+    var sameMerchantGP=isFinite(cmpUplift)?gpForMerchant(sameCost,cmpUplift):NaN;
+    var sameWorstGP=gpForDistributor(sameCost,worstM),sameAvgGP=gpForDistributor(sameCost,avgM);
+    var sameDiffWorst=sameMerchantGP-sameWorstGP,sameDiffAvg=sameMerchantGP-sameAvgGP;
+    $('o_cmp_same_kpis').innerHTML=
+      kpi('托盘商供货商品毛利',isFinite(sameMerchantGP)?money(sameMerchantGP)+' 万':'—','同等商品成本 '+money(sameCost)+' 万')+
+      kpi('最差一级经销商商品毛利',money(sameWorstGP)+' 万','毛利率 '+pct(worstM))+
+      kpi('相对最差一级经销商差额',isFinite(sameDiffWorst)?(sameDiffWorst>=0?'+':'')+money(sameDiffWorst)+' 万':'—','正值代表托盘商方案更优',sameDiffWorst>=0?'opt-good':'opt-bad')+
+      kpi('相对一级经销商平均差额',isFinite(sameDiffAvg)?(sameDiffAvg>=0?'+':'')+money(sameDiffAvg)+' 万':'—','平均毛利率 '+pct(avgM),sameDiffAvg>=0?'opt-good':'opt-warn');
+    $('o_cmp_same_note').innerHTML=isFinite(cmpUplift)?
+      '当前采用 <b>'+(cmpMode==='tier'?'⑥额度保护':'⑤全量统一价')+'</b> 方案；托盘商对应批采涨幅为 <b>'+pct(cmpUplift)+'</b>。'+
+      (sameDiffWorst>=0?'同等商品成本下，托盘商给公司带来的商品毛利高于最差一级经销商。':'同等商品成本下，托盘商给公司带来的商品毛利低于最差一级经销商。')+
+      (sameDiffAvg>=0?' 同时也高于一级经销商平均水平。':' 但仍低于一级经销商平均水平。')
+      :'所选方案当前无可行解，无法形成有效对标；请先调整上方经营假设。';
+
+    var replaceRate=clamp(n('o_cmp_replace_rate')/100,0,1);
+    var displacedBuy=totalBuy*replaceRate,newBuy=totalBuy-displacedBuy;
+    var displacedCost=displacedBuy*(1-m0),newCost=newBuy*(1-m0);
+    var merchantReplaceGP=isFinite(cmpUplift)?gpForMerchant(displacedCost,cmpUplift):NaN;
+    var merchantNewGP=isFinite(cmpUplift)?gpForMerchant(newCost,cmpUplift):NaN;
+    var distReplaceWorstGP=gpForDistributor(displacedCost,worstM),distReplaceAvgGP=gpForDistributor(displacedCost,avgM);
+    var deltaVsWorst=merchantReplaceGP-distReplaceWorstGP,deltaVsAvg=merchantReplaceGP-distReplaceAvgGP;
+    var netVsWorst=isFinite(merchantNewGP)?merchantNewGP+deltaVsWorst:NaN;
+    var netVsAvg=isFinite(merchantNewGP)?merchantNewGP+deltaVsAvg:NaN;
+    $('o_cmp_annual_kpis').innerHTML=
+      kpi('托盘商 2027 预计批采额',money(totalBuy)+' 万','按现价口径输入的公私域批采额合计')+
+      kpi('其中：替代一级经销商业务',money(displacedBuy)+' 万','替代比例 '+pct(replaceRate))+
+      kpi('其中：真正新增采购',money(newBuy)+' 万','不挤占一级经销商原有采购')+
+      kpi('相对最差一级经销商的年度净变化',isFinite(netVsWorst)?(netVsWorst>=0?'+':'')+money(netVsWorst)+' 万':'—','新增业务毛利 + 替代部分毛利差',netVsWorst>=0?'opt-good':'opt-bad')+
+      kpi('相对一级经销商平均水平的年度净变化',isFinite(netVsAvg)?(netVsAvg>=0?'+':'')+money(netVsAvg)+' 万':'—','同一替代比例下的对照',netVsAvg>=0?'opt-good':'opt-warn');
+    var cmpTable='<thead><tr><th>业务拆分</th><th>现价批采额</th><th>商品成本基数</th><th>托盘商方案商品毛利</th><th>一级经销商原商品毛利（最差）</th><th>相对最差一级经销商差额</th></tr></thead><tbody>';
+    cmpTable+='<tr><td>被替代的存量业务</td><td>'+money(displacedBuy)+'</td><td>'+money(displacedCost)+'</td><td>'+money(merchantReplaceGP)+'</td><td>'+money(distReplaceWorstGP)+'</td><td class="'+(deltaVsWorst>=0?'opt-good':'opt-bad')+'">'+(deltaVsWorst>=0?'+':'')+money(deltaVsWorst)+'</td></tr>';
+    cmpTable+='<tr><td>真正新增业务</td><td>'+money(newBuy)+'</td><td>'+money(newCost)+'</td><td>'+money(merchantNewGP)+'</td><td>—</td><td class="opt-good">+'+money(merchantNewGP)+'</td></tr>';
+    cmpTable+='<tr class="hl"><td><b>合计 / 年度净变化</b></td><td><b>'+money(totalBuy)+'</b></td><td><b>'+money(displacedCost+newCost)+'</b></td><td><b>'+money(merchantReplaceGP+merchantNewGP)+'</b></td><td><b>'+money(distReplaceWorstGP)+'</b></td><td class="'+(netVsWorst>=0?'opt-good':'opt-bad')+'"><b>'+(netVsWorst>=0?'+':'')+money(netVsWorst)+'</b></td></tr></tbody>';
+    $('o_cmp_annual_table').innerHTML=cmpTable;
+    $('o_cmp_conclusion').innerHTML=isFinite(cmpUplift)?
+      '<b>决策判断：</b>按当前输入，托盘商方案相对最差一级经销商的年度净商品毛利变化为 <b class="'+(netVsWorst>=0?'opt-good':'opt-bad')+'">'+(netVsWorst>=0?'+':'')+money(netVsWorst)+' 万元</b>；相对一级经销商平均水平为 <b class="'+(netVsAvg>=0?'opt-good':'opt-warn')+'">'+(netVsAvg>=0?'+':'')+money(netVsAvg)+' 万元</b>。其中真正新增采购贡献商品毛利 <b>'+money(merchantNewGP)+' 万元</b>，被替代存量业务相对最差一级经销商的毛利差为 <b>'+(deltaVsWorst>=0?'+':'')+money(deltaVsWorst)+' 万元</b>。'+
+      (netVsWorst>=0?'按“至少优于最差一级经销商”的标准，当前情景通过。':'按“至少优于最差一级经销商”的标准，当前情景未通过；需提高批采价、降低替代比例，或确认是否存在真实新增需求。')
+      :'当前所选批采价方案没有可行解，年度比较暂不可用。';
+
+  }
+  ids.forEach(function(id){$(id).addEventListener('input',run);$(id).addEventListener('change',run);});
+  // 2027 模型为唯一主数据源；旧模型仅负责把推荐价转换为货补/渠道替代口径。
+  run();
+})();
+</script>
+
+</body>
+</html>
