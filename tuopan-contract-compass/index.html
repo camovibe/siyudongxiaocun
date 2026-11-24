@@ -113,6 +113,7 @@ details.fold>summary::-webkit-details-marker{display:none}
 #tab-rebate .tbl table{min-width:1560px}
 #tab-rebate .tbl td:first-child,#tab-rebate .tbl th:first-child{min-width:190px;max-width:240px}
 #tab-rebate .tbl td input[type=number]{min-width:64px}
+.tabin .impbar{flex-basis:100%;margin:2px 0 0;padding:7px 12px}
 </style>
 </head>
 <body>
@@ -121,6 +122,11 @@ details.fold>summary::-webkit-details-marker{display:none}
   <span class="ttl">私域托盘商 · 批采定价 × 返点货补 <span style="color:#38bdf8">V2.1</span></span>
   <button data-tab="pricing" class="on">① 批采定价</button>
   <button data-tab="rebate">② 返点货补</button>
+  <div class="impbar" id="impbar">
+    <label class="imp-toggle"><input type="checkbox" id="l_extimp"><span><b>罗盘数据联动</b>　灌入真实 SKU 品名 / 动销 / 结构份额 / 到手价 / 成本（开票单价不导入，需按合约手填）</span></label>
+    <span class="imp-state" id="imp_state">已关闭 · 当前为演示值</span>
+    <button id="extimp_off" type="button">✕ 一键关闭并还原</button>
+  </div>
 </div></div>
 
 <!-- ================= 页签一：批采定价 ================= -->
@@ -496,11 +502,7 @@ details.fold>summary::-webkit-details-marker{display:none}
 
   <div class="card">
     <h2>④ B 指定 SKU 与 B 上限自动计算</h2>
-    <div class="impbar" id="impbar">
-      <label class="imp-toggle"><input type="checkbox" id="l_extimp"><span><b>罗盘数据联动</b>　灌入真实 SKU 品名 / 动销 / 结构份额 / 到手价 / 成本（开票单价不导入，需按合约手填）</span></label>
-      <span class="imp-state" id="imp_state">已关闭 · 当前为演示值</span>
-      <button id="extimp_off" type="button">✕ 一键关闭并还原</button>
-    </div>
+    <div class="sub" style="margin-bottom:6px">本页 SKU 默认值可由页面顶部「罗盘数据联动」开关灌入真实数据（全局生效）。</div>
     <div class="note" id="extimp_info" style="display:none"></div>
     <div class="tbl">
       <table>
@@ -1393,6 +1395,9 @@ window.COMPASS_DEFAULTS = {"exportedAt": 1795492462404, "version": "v3.8", "week
     }
     renderAll();
   }
+  /* 开关在顶部全局栏（tab-rebate 事件委托范围之外），需直接绑定 */
+  $('l_extimp').addEventListener('change',function(){extimpApply(this.checked);});
+  $('extimp_off').addEventListener('click',function(){$('l_extimp').checked=false;extimpApply(false);});
   renderAll();
 })();
 </script>
